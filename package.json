@@ -1,0 +1,25 @@
+{
+  "name": "fcp-client",
+  "version": "0.0.1",
+  "description": "Node interface for FCP API",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://alexsaves@github.com/foreseecode/fcp-client.git"
+  },
+  "keywords": [
+    "fcp"
+  ],
+  "author": "Alexei White <alexei.white@gmail.com>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/foreseecode/fcp-client/issues"
+  },
+  "homepage": "https://github.com/foreseecode/fcp-client#readme",
+  "dependencies": {
+    "restler": "3.4.0"
+  }
+}
