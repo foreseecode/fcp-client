@@ -69,10 +69,10 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
     password: this.password,
     data: {
       'notes': notes,
-      'file': rest.data("gateway.zip", "application/octet-stream", data)
+      'gateway': rest.data("gateway.zip", "application/octet-stream", data)
     }
   }).on('complete', function(data) {
-    console.log(data);
+    callback(data.statusCode == 200);
   });
 };
 
