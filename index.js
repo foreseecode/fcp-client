@@ -76,5 +76,46 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
   });
 };
 
+
+/**
+ * Post new config JS files
+ * @param uniminifiedJSStr {String} String containing the unminified JS file
+ * @param minifiedJSStr {String} String containing the minified JS file
+ * @param notes {String} Comments on this release
+ * @param callback {Function} Callback
+ */
+FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
+  callback = callback || function () {
+    };
+  if (!uniminifiedJSStr) {
+    throw new Error("Missing unminified JS file.");
+  }
+  if (!minifiedJSStr) {
+    throw new Error("Missing minified JS file.");
+  }
+  if (!notes) {
+    throw new Error("Missing notes.");
+  }
+  if (minifiedJSStr.length >= uniminifiedJSStr) {
+    throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
+  }
+  var zip = new jsZip();
+  zip.file('config.js', uniminifiedJSStr);
+  zip.file('config.min.js', minifiedJSStr);
+  var data = zip.generate({base64: false, compression: 'DEFLATE'});
+
+  rest.post(this._constructEndpointURL('config'), {
+    multipart: true,
+    username: this.username,
+    password: this.password,
+    data: {
+      'notes': notes,
+      'config': rest.data("config.zip", "application/octet-stream", data)
+    }
+  }).on('complete', function(data) {
+    callback(data.statusCode == 200);
+  });
+};
+
 // Tell the world
 module.exports = FCPClient;
