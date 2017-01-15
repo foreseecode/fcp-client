@@ -76,7 +76,6 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
   });
 };
 
-
 /**
  * Post new config JS files
  * @param uniminifiedJSStr {String} String containing the unminified JS file
@@ -100,11 +99,11 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
     throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
   }
   var zip = new jsZip();
-  zip.file('config.js', uniminifiedJSStr);
-  zip.file('config.min.js', minifiedJSStr);
+  zip.file('gatewayconfig.js', uniminifiedJSStr);
+  zip.file('gatewayconfig.min.js', minifiedJSStr);
   var data = zip.generate({base64: false, compression: 'DEFLATE'});
 
-  rest.post(this._constructEndpointURL('config'), {
+  rest.post(this._constructEndpointURL('gatewayconfig'), {
     multipart: true,
     username: this.username,
     password: this.password,
@@ -115,6 +114,44 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
   }).on('complete', function(data) {
     callback(data.statusCode == 200);
   });
+};
+
+/**
+ * List the clients
+ * @param searchterm
+ * @param cb
+ */
+FCPClient.prototype.listClients = function(callback) {
+  rest.get(this._constructEndpointURL('clients'), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function(data) {
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+};
+
+/**
+ * Look up a client by a search term
+ * @param searchterm
+ * @param cb
+ */
+FCPClient.prototype.lookupClient = function(searchterm, callback) {
+  rest.get(this._constructEndpointURL('clients') + "?search=" + encodeURIComponent(searchterm), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function(data) {
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+};
+
+/**
+ * Defines environments
+ * @type {{}}
+ */
+FCPClient.environments = {
+  "dev": "http://dev-fcp.answerscloud.com",
+  "qa": "http://qa-fcp.answerscloud.com",
+  "prod": "http://fcp.answerscloud.com"
 };
 
 // Tell the world
