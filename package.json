@@ -21,6 +21,7 @@
   "homepage": "https://github.com/foreseecode/fcp-client#readme",
   "dependencies": {
     "restler": "3.4.0",
-    "node-zip": "1.1.1"
+    "node-zip": "1.1.1",
+    "semver": "*"
   }
 }
