@@ -314,9 +314,10 @@ FCPClient.prototype.pushCustomerConfigForProduct = function(clientid, sitekey, e
  * @type {{}}
  */
 FCPClient.environments = {
-  "dev": "http://dev-fcp.answerscloud.com",
-  "qa": "http://qa-fcp.answerscloud.com",
-  "prod": "http://fcp.answerscloud.com"
+  "dev": "https://dev-fcp.answerscloud.com",
+  "qa": "https://qa-fcp.answerscloud.com",
+  "qa2": "https://qa2-fcp.answerscloud.com",
+  "prod": "https://fcp.answerscloud.com"
 };
 
 // Tell the world
