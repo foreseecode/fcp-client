@@ -22,6 +22,7 @@
   "dependencies": {
     "restler": "3.4.0",
     "node-zip": "1.1.1",
-    "semver": "*"
+    "semver": "*",
+    "prompt": "^1.0.0"
   }
 }

@@ -1,7 +1,8 @@
 var jsZip = require('node-zip'),
   fs = require('fs'),
   rest = require('restler'),
-  semver = require('semver');
+  semver = require('semver'),
+  prompt = require('prompt');
 
 /**
  * Initialize a new instance of FCP Client
@@ -33,7 +34,7 @@ var FCPClient = function (username, password, hostname) {
  * @param endpoint
  * @private
  */
-FCPClient.prototype._constructEndpointURL = function(endpoint) {
+FCPClient.prototype._constructEndpointURL = function (endpoint) {
   return this.hostname + "/" + endpoint;
 };
 
@@ -72,7 +73,7 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
       'notes': notes,
       'gateway': rest.data("gateway.zip", "application/octet-stream", data)
     }
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200);
   });
 };
@@ -112,7 +113,7 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
       'notes': notes,
       'config': rest.data("config.zip", "application/octet-stream", data)
     }
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200);
   });
 };
@@ -145,7 +146,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
       'latest': latest.toString(),
       'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
     }
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, data.message);
   });
 };
@@ -168,7 +169,7 @@ FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
       'notes': notes,
       'config': rest.data("config.js", "application/octet-stream", new Buffer(configStr))
     }
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, data.message);
   });
 };
@@ -178,11 +179,11 @@ FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
  * @param searchterm
  * @param cb
  */
-FCPClient.prototype.listClients = function(callback) {
+FCPClient.prototype.listClients = function (callback) {
   rest.get(this._constructEndpointURL('clients'), {
     username: this.username,
     password: this.password
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -192,11 +193,11 @@ FCPClient.prototype.listClients = function(callback) {
  * @param searchterm
  * @param cb
  */
-FCPClient.prototype.lookupClient = function(searchterm, callback) {
+FCPClient.prototype.lookupClient = function (searchterm, callback) {
   rest.get(this._constructEndpointURL('clients') + "?search=" + encodeURIComponent(searchterm), {
     username: this.username,
     password: this.password
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -206,11 +207,11 @@ FCPClient.prototype.lookupClient = function(searchterm, callback) {
  * @param searchterm
  * @param cb
  */
-FCPClient.prototype.getClient = function(id, callback) {
+FCPClient.prototype.getClient = function (id, callback) {
   rest.get(this._constructEndpointURL('clients/' + id), {
     username: this.username,
     password: this.password
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -222,7 +223,7 @@ FCPClient.prototype.getClient = function(id, callback) {
  * @param notes {String} Notes
  * @param callback {Function} Callback
  */
-FCPClient.prototype.makeClient = function(name, metadata, notes, callback) {
+FCPClient.prototype.makeClient = function (name, metadata, notes, callback) {
   if (name.length > 45) {
     name = name.substr(0, 45).toLowerCase();
   }
@@ -234,7 +235,7 @@ FCPClient.prototype.makeClient = function(name, metadata, notes, callback) {
       'name': name.toLowerCase(),
       'metadata': metadata
     }
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -246,7 +247,7 @@ FCPClient.prototype.makeClient = function(name, metadata, notes, callback) {
  * @param notes {String} Notes
  * @param callback {Function} Callback
  */
-FCPClient.prototype.makeSite = function(sitekey, client_id, notes, callback) {
+FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
   if (sitekey.length > 45) {
     sitekey = sitekey.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
   }
@@ -258,7 +259,7 @@ FCPClient.prototype.makeSite = function(sitekey, client_id, notes, callback) {
       'name': sitekey.toLowerCase(),
       'client_id': client_id
     }
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -268,11 +269,11 @@ FCPClient.prototype.makeSite = function(sitekey, client_id, notes, callback) {
  * @param clientid {Number} Client ID
  * @param callback {Function} Callback
  */
-FCPClient.prototype.listSitesForClient = function(clientid, callback) {
+FCPClient.prototype.listSitesForClient = function (clientid, callback) {
   rest.get(this._constructEndpointURL('sites?client_id=' + clientid), {
     username: this.username,
     password: this.password
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -288,7 +289,7 @@ FCPClient.prototype.listSitesForClient = function(clientid, callback) {
  * @param notes {String} Any notes
  * @param callback
  */
-FCPClient.prototype.pushCustomerConfigForProduct = function(clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback) {
+FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback) {
   sitekey = sitekey.trim().toLowerCase();
   environment = environment.trim().toLowerCase();
   product = product.trim().toLowerCase();
@@ -304,7 +305,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function(clientid, sitekey, e
       'config': rest.data("config.js", "application/javascript", new Buffer(snippetConfig)),
       'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
     }
-  }).on('complete', function(data) {
+  }).on('complete', function (data) {
     callback(data.statusCode == 200, data.message);
   });
 };
@@ -318,6 +319,58 @@ FCPClient.environments = {
   "qa": "https://qa-fcp.foresee.com",
   "qa2": "https://qa2-fcp.foresee.com",
   "prod": "https://fcp.foresee.com"
+};
+
+/**
+ * Ask the user for credentials and notes if appropriate
+ * @param donotes {Boolean} Ask for notes?
+ * @param cb {Function} Callback
+ */
+FCPClient.promptForFCPCredentials = function (donotes, cb) {
+  var schema = {
+    properties: {
+      notes: {
+        required: true
+      },
+      username: {
+        required: true
+      },
+      password: {
+        hidden: true,
+        required: true
+      },
+      environment: {
+        required: true,
+        type: 'integer',
+        message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod'
+      }
+    }
+  };
+  if (!donotes) {
+    delete schema.properties.notes;
+  }
+  console.log("Please enter your FCP credentials (no @ is needed). ".cyan);
+  console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = prod".blue);
+  prompt.start();
+  prompt.get(schema, function (err, result) {
+    if (!err) {
+      if (result.username.indexOf('@') == -1) {
+        result.username = result.username.trim() + '@aws.foreseeresults.com';
+      }
+      if (result.environment == 0) {
+        result.environment = FCPClient.environments.dev;
+      } else if (result.environment == 1) {
+        result.environment = FCPClient.environments.qa;
+      } else if (result.environment == 2) {
+        result.environment = FCPClient.environments.qa2;
+      } else if (result.environment == 3) {
+        result.environment = FCPClient.environments.prod;
+      } else {
+        throw new Error("Invalid environment.");
+      }
+      cb(result.username, result.password, result.environment, result.notes);
+    }
+  });
 };
 
 // Tell the world
