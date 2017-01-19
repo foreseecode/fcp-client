@@ -361,7 +361,6 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       required: true
     }
   }
-  console.log('env', environment, typeof(environment));
 
   if (typeof(environment) == "undefined") {
     schema.properties.environment = {
