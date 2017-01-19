@@ -218,23 +218,28 @@ FCPClient.prototype.getClient = function (id, callback) {
 
 /**
  * Create a client
+ * @param id {Number} Client ID. 0 if auto-assign
  * @param name {String} Client name
  * @param metadata {String} Meta data
  * @param notes {String} Notes
  * @param callback {Function} Callback
  */
-FCPClient.prototype.makeClient = function (name, metadata, notes, callback) {
+FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) {
   if (name.length > 45) {
     name = name.substr(0, 45).toLowerCase();
+  }
+  var dta = {
+    'notes': notes,
+    'name': name.toLowerCase(),
+    'metadata': metadata
+  };
+  if (id > 0) {
+    dta.client_id = id;
   }
   rest.post(this._constructEndpointURL('clients'), {
     username: this.username,
     password: this.password,
-    data: {
-      'notes': notes,
-      'name': name.toLowerCase(),
-      'metadata': metadata
-    }
+    data: dta
   }).on('complete', function (data) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
