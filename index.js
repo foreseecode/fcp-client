@@ -327,35 +327,60 @@ FCPClient.environments = {
  * @param cb {Function} Callback
  */
 FCPClient.promptForFCPCredentials = function (donotes, cb) {
-  var schema = {
-    properties: {
-      notes: {
-        required: true
-      },
-      username: {
-        required: true
-      },
-      password: {
-        hidden: true,
-        required: true
-      },
-      environment: {
-        required: true,
-        type: 'integer',
-        message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod'
-      }
-    }
-  };
-  if (!donotes) {
-    delete schema.properties.notes;
+  // Read FCP credentials from ~/env.json, if it exists
+  try {
+    var home = process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'],
+      ev = JSON.parse(fs.readFileSync(home + '/env.json').toString()),
+      username = ev.FCP_USERNAME,
+      password = ev.FCP_PASSWORD,
+      notes = ev.FCP_NOTES,
+      environment = ev.FCP_ENVIRONMENT;
+  } catch (e) {
   }
+
+  var schema = {
+    properties: {}
+  };
+
+  if (donotes && !notes) {
+    schema.properties.notes = {
+      required: true
+    };
+  }
+  if (!username) {
+    schema.properties.username = {
+      required: true
+    };
+  }
+  if (!password) {
+    schema.properties.password = {
+      hidden: true,
+      required: true
+    }
+  }
+  if (!environment) {
+    schema.properties.environment = {
+      required: true,
+      type: 'integer',
+      message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod'
+    }
+  }
+
   console.log("Please enter your FCP credentials (no @ is needed). ".cyan);
   console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = prod".blue);
   prompt.start();
   prompt.get(schema, function (err, result) {
     if (!err) {
+      result.username = result.username || username;
+      result.password = result.password || password;
+      result.notes = result.notes || notes;
+
       if (result.username.indexOf('@') == -1) {
         result.username = result.username.trim() + '@aws.foreseeresults.com';
+      }
+
+      if (typeof(environment) != "undefined") {
+        result.environment = environment;
       }
       if (result.environment == 0) {
         result.environment = FCPClient.environments.dev;
