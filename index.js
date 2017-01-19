@@ -347,6 +347,9 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       required: true
     };
   }
+  if (!username || !password) {
+    console.log("Please enter your FCP credentials (no @ is needed). ".cyan);
+  }
   if (!username) {
     schema.properties.username = {
       required: true
@@ -358,16 +361,17 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       required: true
     }
   }
-  if (!environment) {
+  console.log('env', environment, typeof(environment));
+
+  if (typeof(environment) == "undefined") {
     schema.properties.environment = {
       required: true,
       type: 'integer',
       message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod'
     }
+    console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = prod".blue);
   }
 
-  console.log("Please enter your FCP credentials (no @ is needed). ".cyan);
-  console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = prod".blue);
   prompt.start();
   prompt.get(schema, function (err, result) {
     if (!err) {
