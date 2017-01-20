@@ -246,6 +246,36 @@ FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) 
 };
 
 /**
+ * Create a client
+ * @param id {Number} Client ID. 0 if auto-assign
+ * @param name {String} Client name
+ * @param metadata {String} Meta data
+ * @param notes {String} Notes
+ * @param callback {Function} Callback
+ */
+FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, callback) {
+  callback = callback || function () {
+
+    };
+
+  var args = arguments;
+
+  if (!id) {
+    throw new Error("Invalid client ID");
+  } else {
+    this.getClient(id, function (_id, _name, _metadata, _notes, _callback, ctx) {
+      return function (success, client) {
+        if (!success || !client) {
+          ctx.makeClient(_id, _name, _metadata, _notes, _callback);
+        } else {
+          callback(true, client);
+        }
+      };
+    }(id, name, metadata, notes, callback, this));
+  }
+};
+
+/**
  * Make a new site
  * @param sitekey {String} The site key
  * @param client_id {Number} The client ID
