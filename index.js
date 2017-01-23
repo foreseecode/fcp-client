@@ -369,7 +369,8 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       username = ev.FCP_USERNAME,
       password = ev.FCP_PASSWORD,
       notes = ev.FCP_NOTES,
-      environment = ev.FCP_ENVIRONMENT;
+      environment = ev.FCP_ENVIRONMENT,
+      latest = ev.FCP_LATEST;
   } catch (e) {
   }
 
@@ -395,6 +396,12 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       hidden: true,
       required: true
     }
+  }
+  if (typeof(latest) == "undefined") {
+    schema.properties.latest = {
+      required: true,
+      type: 'boolean'
+    };
   }
 
   if (typeof(environment) == "undefined") {
@@ -431,7 +438,7 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       } else {
         throw new Error("Invalid environment.");
       }
-      cb(result.username, result.password, result.environment, result.notes);
+      cb(result.username, result.password, result.environment, result.notes, result.latest);
     }
   });
 };
