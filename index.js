@@ -34,7 +34,7 @@ var FCPClient = function (username, password, hostname) {
  * @param notes
  * @private
  */
-FCPClient.prototype._formatStringField = function(notes) {
+FCPClient.prototype._formatStringField = function (notes) {
   var nts = notes || '';
   nts = nts.replace(/[^0-9a-zA-Z ]*/g, '');
   nts = nts.trim();
@@ -385,16 +385,24 @@ FCPClient.environments = {
  * @param donotes {Boolean} Ask for notes?
  * @param cb {Function} Callback
  */
-FCPClient.promptForFCPCredentials = function (donotes, cb) {
+FCPClient.promptForFCPCredentials = function (donotes, cb, uselatest) {
+  var home,
+    ev,
+    username,
+    password,
+    notes,
+    environment,
+    latest = !!uselatest;
+
   // Read FCP credentials from ~/env.json, if it exists
   try {
-    var home = process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'],
-      ev = JSON.parse(fs.readFileSync(home + '/env.json').toString()),
-      username = ev.FCP_USERNAME,
-      password = ev.FCP_PASSWORD,
-      notes = ev.FCP_NOTES,
-      environment = ev.FCP_ENVIRONMENT,
-      latest = ev.FCP_LATEST;
+    home = process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'];
+    ev = JSON.parse(fs.readFileSync(home + '/env.json').toString());
+    username = ev.FCP_USERNAME;
+    password = ev.FCP_PASSWORD;
+    notes = ev.FCP_NOTES;
+    environment = ev.FCP_ENVIRONMENT;
+    latest = ev.FCP_LATEST || uselatest;
   } catch (e) {
   }
 
@@ -433,8 +441,12 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       required: true,
       type: 'integer',
       message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod'
-    }
+    };
     console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = stg".green + ", " + "4 = prod".blue);
+  }
+
+  if (latest) {
+    console.log("Latest: true/false.".yellow);
   }
 
   prompt.start();
