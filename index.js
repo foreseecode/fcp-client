@@ -30,6 +30,21 @@ var FCPClient = function (username, password, hostname) {
 };
 
 /**
+ * Format notes
+ * @param notes
+ * @private
+ */
+FCPClient.prototype._formatStringField = function(notes) {
+  var nts = notes || '';
+  nts = nts.replace(/[^0-9a-zA-Z ]*/g, '');
+  nts = nts.trim();
+  if (nts.length === 0) {
+    nts = "No notes provided (_formatNotes fcp-client)";
+  }
+  return nts;
+};
+
+/**
  * Return a fully qualified URL for an endpoint
  * @param endpoint
  * @private
@@ -70,7 +85,7 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
     username: this.username,
     password: this.password,
     data: {
-      'notes': notes,
+      'notes': this._formatStringField(notes),
       'gateway': rest.data("gateway.zip", "application/octet-stream", data)
     }
   }).on('complete', function (data) {
@@ -110,7 +125,7 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
     username: this.username,
     password: this.password,
     data: {
-      'notes': notes,
+      'notes': this._formatStringField(notes),
       'config': rest.data("config.zip", "application/octet-stream", data)
     }
   }).on('complete', function (data) {
@@ -141,7 +156,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
     username: this.username,
     password: this.password,
     data: {
-      'notes': notes,
+      'notes': this._formatStringField(notes),
       'version': version,
       'latest': latest.toString(),
       'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
@@ -166,7 +181,7 @@ FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
     username: this.username,
     password: this.password,
     data: {
-      'notes': notes,
+      'notes': this._formatStringField(notes),
       'config': rest.data("config.js", "application/octet-stream", new Buffer(configStr))
     }
   }).on('complete', function (data) {
@@ -229,10 +244,19 @@ FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) 
     name = name.substr(0, 45).toLowerCase();
   }
   var dta = {
-    'notes': notes,
-    'name': name.toLowerCase(),
-    'metadata': metadata
+    'notes': this._formatStringField(notes),
+    'name': this._formatStringField(name),
+    'metadata': metadata.trim()
   };
+  if (dta.notes.length === 0) {
+    throw new Error("Missing notes field on make client request.");
+  }
+  if (dta.name.length === 0) {
+    throw new Error("Missing name field on make client request.");
+  }
+  if (dta.metadata.length === 0) {
+    throw new Error("Missing metadata field on make client request.");
+  }
   if (id > 0) {
     dta.client_id = id;
   }
@@ -257,7 +281,6 @@ FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, 
   callback = callback || function () {
 
     };
-
   var args = arguments;
 
   if (!id) {
@@ -290,7 +313,7 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
     username: this.username,
     password: this.password,
     data: {
-      'notes': notes,
+      'notes': this._formatStringField(notes),
       'name': sitekey.toLowerCase(),
       'client_id': client_id
     }
@@ -336,7 +359,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
     username: this.username,
     password: this.password,
     data: {
-      'notes': notes,
+      'notes': this._formatStringField(notes),
       'config': rest.data("config.js", "application/javascript", new Buffer(snippetConfig)),
       'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
     }
@@ -353,6 +376,7 @@ FCPClient.environments = {
   "dev": "https://dev-fcp.foresee.com",
   "qa": "https://qa-fcp.foresee.com",
   "qa2": "https://qa2-fcp.foresee.com",
+  "stg": "https://stg-fcp.foreee.com",
   "prod": "https://fcp.foresee.com"
 };
 
@@ -410,7 +434,7 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       type: 'integer',
       message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod'
     }
-    console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = prod".blue);
+    console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = stg".green + ", " + "4 = prod".blue);
   }
 
   prompt.start();
@@ -434,6 +458,8 @@ FCPClient.promptForFCPCredentials = function (donotes, cb) {
       } else if (result.environment == 2) {
         result.environment = FCPClient.environments.qa2;
       } else if (result.environment == 3) {
+        result.environment = FCPClient.environments.stg;
+      } else if (result.environment == 4) {
         result.environment = FCPClient.environments.prod;
       } else {
         throw new Error("Invalid environment.");
