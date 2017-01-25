@@ -2,7 +2,15 @@ var jsZip = require('node-zip'),
   fs = require('fs'),
   rest = require('restler'),
   semver = require('semver'),
-  prompt = require('prompt');
+  prompt = require('prompt'),
+  EventEmitter = require("events");
+
+// Some cache
+var clients = {},
+  sites = {};
+
+// An event emitter
+var clientCreated = new EventEmitter();
 
 /**
  * Initialize a new instance of FCP Client
@@ -34,12 +42,19 @@ var FCPClient = function (username, password, hostname) {
  * @param notes
  * @private
  */
-FCPClient.prototype._formatStringField = function (notes) {
-  var nts = notes || '';
+FCPClient.prototype._formatStringField = function (str, maxlen) {
+  if (!maxlen) {
+    maxlen = 45000;
+  }
+  var nts = str || '';
+  nts = nts.replace(/:/g, ' ').replace(/\/\//g, '').replace(/\//g, ' ').replace(/\./g, ' ');
   nts = nts.replace(/[^0-9a-zA-Z ]*/g, '');
   nts = nts.trim();
   if (nts.length === 0) {
     nts = "No notes provided (_formatNotes fcp-client)";
+  }
+  if (nts.length > maxlen) {
+    nts = nts.substr(0, maxlen);
   }
   return nts;
 };
@@ -199,6 +214,11 @@ FCPClient.prototype.listClients = function (callback) {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
+    if (data.statusCode == 200) {
+      for (var i = 0; i < data.message.length; i++) {
+        clients['_' + data.message[i].id] = data.message[i];
+      }
+    }
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -223,7 +243,30 @@ FCPClient.prototype.lookupClient = function (searchterm, callback) {
  * @param cb
  */
 FCPClient.prototype.getClient = function (id, callback) {
-  rest.get(this._constructEndpointURL('clients/' + id), {
+  if (clients['_' + id]) {
+    process.nextTick(function () {
+      callback(true, clients['_' + id]);
+    });
+  } else {
+    rest.get(this._constructEndpointURL('clients/' + id), {
+      username: this.username,
+      password: this.password
+    }).on('complete', function (data) {
+      if (data.statusCode == 200) {
+        clients['_' + id] = data.message;
+      }
+      callback(data.statusCode == 200, !!data ? data.message : null);
+    });
+  }
+};
+
+
+/**
+ * Reset a client
+ * @param callback {Function} Callback
+ */
+FCPClient.prototype.reset = function (callback) {
+  rest.post(this._constructEndpointURL('reset'), {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
@@ -240,13 +283,12 @@ FCPClient.prototype.getClient = function (id, callback) {
  * @param callback {Function} Callback
  */
 FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) {
-  if (name.length > 45) {
-    name = name.substr(0, 45).toLowerCase();
-  }
+  callback = callback || function () {
+    };
   var dta = {
     'notes': this._formatStringField(notes),
-    'name': this._formatStringField(name),
-    'metadata': metadata.trim()
+    'name': this._formatStringField(name, 127),
+    'metadata': this._formatStringField(metadata)
   };
   if (dta.notes.length === 0) {
     throw new Error("Missing notes field on make client request.");
@@ -265,6 +307,12 @@ FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) 
     password: this.password,
     data: dta
   }).on('complete', function (data) {
+    if (data.statusCode == 200) {
+      clients['_' + data.message.id] = data.message;
+      clientCreated.emit('created');
+      clientCreated.emit('created' + data.message.id);
+      sites['_' + data.message.id] = [];
+    }
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -306,15 +354,75 @@ FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, 
  * @param callback {Function} Callback
  */
 FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
-  if (sitekey.length > 45) {
-    sitekey = sitekey.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
-  }
+  var ctx = this;
+  callback = callback || function () {
+    };
+  var dta = {
+    'notes': this._formatStringField(notes),
+    'name': sitekey.toLowerCase().replace(/ /g, ''),
+    'client_id': client_id
+  };
   rest.post(this._constructEndpointURL('sites'), {
+    username: this.username,
+    password: this.password,
+    data: dta
+  }).on('complete', function (data) {
+    if (data.statusCode == 200) {
+      if (!sites['_' + client_id]) {
+        sites['_' + client_id] = [{name: sitekey}];
+      } else {
+        sites['_' + client_id].push({name: sitekey});
+      }
+      // Make containers automatically
+      var didstaging = false,
+        didproduction = false,
+        checker = function () {
+          if (didstaging && didproduction) {
+            callback(data.statusCode == 200, !!data ? data.message : null);
+          }
+        };
+      ctx.makeContainer(sitekey, "staging", client_id, notes, function (success, ndata) {
+        if (!success) {
+          console.log(ndata);
+          throw new Error("Did not successfully create staging container.");
+        } else {
+          didstaging = true;
+          checker();
+        }
+      });
+      ctx.makeContainer(sitekey, "production", client_id, notes, function (success, ndata) {
+        if (!success) {
+          console.log(ndata);
+          throw new Error("Did not successfully create production container.");
+        } else {
+          didproduction = true;
+          checker();
+        }
+      });
+    } else {
+      callback(data.statusCode == 200, !!data ? data.message : null);
+    }
+  });
+};
+
+/**
+ * Make a new container
+ * @param sitekey {String} The site key
+ * @param container {String} The container
+ * @param client_id {Number} The client ID
+ * @param notes {String} Notes
+ * @param callback {Function} Callback
+ */
+FCPClient.prototype.makeContainer = function (sitekey, container, client_id, notes, callback) {
+  if (container.length > 45) {
+    container = container.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
+  }
+  rest.post(this._constructEndpointURL('sites/' + sitekey + '/containers'), {
     username: this.username,
     password: this.password,
     data: {
       'notes': this._formatStringField(notes),
-      'name': sitekey.toLowerCase(),
+      'name': this._formatStringField(container.toLowerCase(), 45),
       'client_id': client_id
     }
   }).on('complete', function (data) {
@@ -323,17 +431,64 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
 };
 
 /**
+ * List all sites
+ * @param callback {Function} Callback
+ */
+FCPClient.prototype.listSites = function (callback) {
+  callback = callback || function () {
+
+    };
+  rest.get(this._constructEndpointURL('sites'), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    if (data && data.statusCode == 404) {
+      data.message = [];
+      data.statusCode = 200;
+    }
+    if (data && data.message && typeof(data.message) == typeof([])) {
+      for (var i = 0; i < data.message.length; i++) {
+        var ste = data.message[i],
+          clientid = ste.client_id;
+        if (!sites['_' + clientid]) {
+          sites['_' + clientid] = [];
+        }
+        sites['_' + clientid].push(ste);
+      }
+    }
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+
+};
+
+/**
  * List the site keys for a client
  * @param clientid {Number} Client ID
  * @param callback {Function} Callback
  */
 FCPClient.prototype.listSitesForClient = function (clientid, callback) {
-  rest.get(this._constructEndpointURL('sites?client_id=' + clientid), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
+  callback = callback || function () {
+
+    };
+  if (sites['_' + clientid]) {
+    process.nextTick(function () {
+      callback(true, sites['_' + clientid]);
+    });
+  } else {
+    rest.get(this._constructEndpointURL('sites?client_id=' + clientid), {
+      username: this.username,
+      password: this.password
+    }).on('complete', function (data) {
+      if (data && data.statusCode == 404 && data.message == "No sites found") {
+        data.message = [];
+        data.statusCode = 200;
+      }
+      if (data.statusCode == 200) {
+        sites['_' + clientid] = data.message;
+      }
+      callback(data.statusCode == 200, !!data ? data.message : null);
+    });
+  }
 };
 
 /**
