@@ -161,9 +161,14 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
   callback = callback || function () {
     };
 
+  console.log("postCodeVersion:", version, "bytes:", codeBuffer.length);
   if (!version || !semver.valid(version)) {
     console.log("Invalid semver version: ".red, version.toString().yellow);
     callback(false);
+  }
+
+  if (latest != "true" && latest != "false") {
+    latest = true;
   }
 
   rest.post(this._constructEndpointURL('code'), {
@@ -177,6 +182,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
       'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
     }
   }).on('complete', function (data) {
+    console.log("Received response from server: ", data);
     callback(data.statusCode == 200, data.message);
   });
 };
@@ -584,7 +590,7 @@ FCPClient.promptForFCPCredentials = function (donotes, cb, uselatest) {
       required: true
     }
   }
-  if (typeof(latest) == "undefined") {
+  if (latest) {
     schema.properties.latest = {
       required: true,
       type: 'boolean'
