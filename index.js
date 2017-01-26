@@ -525,6 +525,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
       'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
     }
   }).on('complete', function (data) {
+    //console.log(data);
     callback(data.statusCode == 200, data.message);
   });
 };
