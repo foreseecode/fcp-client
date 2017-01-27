@@ -574,14 +574,17 @@ FCPClient.environments = {
  * @param donotes {Boolean} Ask for notes?
  * @param cb {Function} Callback
  */
-FCPClient.promptForFCPCredentials = function (donotes, cb, uselatest) {
+FCPClient.promptForFCPCredentials = function (options, cb) {
   var home,
     ev,
     username,
     password,
     notes,
     environment,
-    latest = !!uselatest;
+    latest = !options.latest,
+    schema = {
+      properties: {}
+    };
 
   // Read FCP credentials from ~/env.json, if it exists
   try {
@@ -591,15 +594,17 @@ FCPClient.promptForFCPCredentials = function (donotes, cb, uselatest) {
     password = ev.FCP_PASSWORD;
     notes = ev.FCP_NOTES;
     environment = ev.FCP_ENVIRONMENT;
-    latest = ev.FCP_LATEST || uselatest;
+    //latest = ev.FCP_LATEST || latest;
   } catch (e) {
   }
 
-  var schema = {
-    properties: {}
-  };
-
-  if (donotes && !notes) {
+  if (options.clientId) {
+    schema.properties.clientId = {
+      required: true,
+      type: 'string'
+    };
+  }
+  if (options.notes && !notes) {
     schema.properties.notes = {
       required: true
     };
@@ -618,13 +623,13 @@ FCPClient.promptForFCPCredentials = function (donotes, cb, uselatest) {
       required: true
     }
   }
-  if (latest) {
+  if (options.latest) {
     schema.properties.latest = {
       required: true,
       type: 'boolean'
     };
+    console.log("Latest: true/false.".yellow);
   }
-
   if (typeof(environment) == "undefined") {
     schema.properties.environment = {
       required: true,
@@ -632,10 +637,6 @@ FCPClient.promptForFCPCredentials = function (donotes, cb, uselatest) {
       message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod'
     };
     console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = stg".green + ", " + "4 = prod".blue);
-  }
-
-  if (latest) {
-    console.log("Latest: true/false.".yellow);
   }
 
   prompt.start();
@@ -648,9 +649,11 @@ FCPClient.promptForFCPCredentials = function (donotes, cb, uselatest) {
       if (result.username.indexOf('@') == -1) {
         result.username = result.username.trim() + '@aws.foreseeresults.com';
       }
-
       if (typeof(environment) != "undefined") {
         result.environment = environment;
+      }
+      if (typeof(result.latest) == "undefined") {
+        result.latest = latest;
       }
       if (result.environment == 0) {
         result.environment = FCPClient.environments.dev;
@@ -665,7 +668,7 @@ FCPClient.promptForFCPCredentials = function (donotes, cb, uselatest) {
       } else {
         throw new Error("Invalid environment.");
       }
-      cb(result.username, result.password, result.environment, result.notes, result.latest);
+      cb(result);
     }
   });
 };
