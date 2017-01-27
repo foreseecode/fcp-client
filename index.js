@@ -303,6 +303,7 @@ FCPClient.prototype.reset = function (callback) {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
+    console.log("Reset result: ", data);
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -552,7 +553,6 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
       'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
     }
   }).on('complete', function (data) {
-    //console.log(data);
     callback(data.statusCode == 200, data.message);
   });
 };
@@ -565,7 +565,7 @@ FCPClient.environments = {
   "dev": "https://dev-fcp.foresee.com",
   "qa": "https://qa-fcp.foresee.com",
   "qa2": "https://qa2-fcp.foresee.com",
-  "stg": "https://stg-fcp.foreee.com",
+  "stg": "https://stg-fcp.foresee.com",
   "prod": "https://fcp.foresee.com"
 };
 
