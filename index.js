@@ -188,7 +188,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
 };
 
 /**
- * Post anew default configuration
+ * Post a new default configuration
  * @param configStr {String} JSON object as a string
  * @param notes {String} Notes
  * @param callback {Function} Callback
@@ -207,6 +207,33 @@ FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
     }
   }).on('complete', function (data) {
     callback(data.statusCode == 200, data.message);
+  });
+};
+
+
+/**
+ * Post a new default configuration for a particular client and container
+ * @param sitekey
+ * @param container
+ * @param configStr
+ * @param notes
+ * @param callback
+ */
+FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, container, configStr, notes, callback) {
+  callback = callback || function () {
+    };
+
+  rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs'), {
+    multipart: true,
+    username: this.username,
+    password: this.password,
+    data: {
+      'notes': this._formatStringField(notes),
+      'config': rest.data("config.js", "application/javascript", new Buffer(configStr))
+    }
+  }).on('complete', function (data) {
+    console.log("Got back: ", data);
+    //callback(data.statusCode == 200, data.message);
   });
 };
 
