@@ -232,8 +232,7 @@ FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, conta
       'config': rest.data("config.js", "application/javascript", new Buffer(configStr))
     }
   }).on('complete', function (data) {
-    console.log("Got back: ", data);
-    //callback(data.statusCode == 200, data.message);
+    callback(data.statusCode == 200, data.message);
   });
 };
 
@@ -543,6 +542,10 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   callback = callback || function () {
     };
 
+  if (product.toLowerCase().trim() == "replay") {
+    throw new Error("Replay is not a valid product code! Use record instead!");
+  }
+
   rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), {
     multipart: true,
     username: this.username,
@@ -553,8 +556,19 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
       'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
     }
   }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
+    if (data.message.trim().toLowerCase().indexOf("site not found") > -1) {
+      console.log("Site was missing. Attempting to create a site called".yellow, sitekey.magenta, "for client".yellow, clientid, "...".yellow);
+      this.makeSite(sitekey, clientid, "Making site " + sitekey + " for client " + clientid + " in response to a pushCustomerConfigForProduct", function(success, result) {
+        if (success) {
+          this.pushCustomerConfigForProduct(clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback);
+        } else {
+          console.log("Could not create site: ".red + sitekey.red, result);
+        }
+      }.bind(this));
+    } else {
+      callback(data.statusCode == 200, data.message);
+    }
+  }.bind(this));
 };
 
 /**
