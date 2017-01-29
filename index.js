@@ -464,6 +464,44 @@ FCPClient.prototype.makeContainer = function (sitekey, container, client_id, not
 };
 
 /**
+ * Does a particular site key exist?
+ * @param sitekey {String} The site key
+ * @param callback {Function} Callback. Arguments: success {Boolean}, exists {Boolean}, client {Number}
+ */
+FCPClient.prototype.doesSiteKeyExist = function (sitekey, callback) {
+  sitekey = sitekey || '';
+  if (sitekey.trim().length == 0) {
+    throw new Error("Invalid sitekey");
+  }
+  sitekey = sitekey.trim().replace(/[ \t\n\r]/g, '').toLowerCase();
+  if (sitekey.length > 45) {
+    sitekey = sitekey.substr(0, 45);
+  }
+  callback = callback || function () {
+    };
+  this.listSites(function (success, info) {
+    if (!success) {
+      callback(success, false);
+    } else {
+      if (!info) {
+        info = [];
+      }
+      var didFind = false;
+      for (var i = 0; i < info.length; i++) {
+        if (info[i].name == sitekey) {
+          // found it!
+          didFind = true;
+          callback(true, true, info[i]);
+        }
+      }
+      if (!didFind) {
+        callback(true, false);
+      }
+    }
+  });
+};
+
+/**
  * List all sites
  * @param callback {Function} Callback
  */
@@ -558,7 +596,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   }).on('complete', function (data) {
     if (data.message.trim().toLowerCase().indexOf("site not found") > -1) {
       console.log("Site was missing. Attempting to create a site called".yellow, sitekey.magenta, "for client".yellow, clientid, "...".yellow);
-      this.makeSite(sitekey, clientid, "Making site " + sitekey + " for client " + clientid + " in response to a pushCustomerConfigForProduct", function(success, result) {
+      this.makeSite(sitekey, clientid, "Making site " + sitekey + " for client " + clientid + " in response to a pushCustomerConfigForProduct", function (success, result) {
         if (success) {
           this.pushCustomerConfigForProduct(clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback);
         } else {
