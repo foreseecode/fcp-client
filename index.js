@@ -668,6 +668,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
  * @type {{}}
  */
 FCPClient.environments = {
+  "local": "http://localhost:3001",
   "dev": "https://dev-fcp.foresee.com",
   "qa": "https://qa-fcp.foresee.com",
   "qa2": "https://qa2-fcp.foresee.com",
@@ -740,9 +741,9 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     schema.properties.environment = {
       required: true,
       type: 'integer',
-      message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod'
+      message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod, 4 = localhost:3001'
     };
-    console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = stg".green + ", " + "4 = prod".blue);
+    console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = stg".green + ", " + "4 = prod".blue + ", " + "5 = localhost:3001");
   }
 
   prompt.start();
@@ -771,6 +772,8 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
         result.environment = FCPClient.environments.stg;
       } else if (result.environment == 4) {
         result.environment = FCPClient.environments.prod;
+      } else if (result.environment == 5) {
+        result.environment = FCPClient.environments.local;
       } else {
         throw new Error("Invalid environment.");
       }
