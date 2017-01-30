@@ -414,24 +414,46 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
             callback(data.statusCode == 200, !!data ? data.message : null);
           }
         };
-      ctx.makeContainer(sitekey, "staging", client_id, notes, function (success, ndata) {
+      ctx.getContainersForSitekey(sitekey, function(success, result) {
         if (!success) {
-          console.log(ndata);
-          throw new Error("Did not successfully create staging container.");
+          console.log("Failed to get containers for site key: ", sitekey, result);
         } else {
-          didstaging = true;
-          checker();
+          for (var b = 0; b < result.length; b++) {
+            if (result[b].name == "production") {
+              didproduction = true;
+            }
+            if (result[b].name == "staging") {
+              didstaging = true;
+            }
+          }
+          if (!didstaging) {
+            ctx.makeContainer(sitekey, "staging", client_id, notes, function (success, ndata) {
+              if (!success) {
+                console.log(ndata);
+                throw new Error("Did not successfully create staging container.");
+              } else {
+                didstaging = true;
+                checker();
+              }
+            });
+          }
+          if (!didproduction) {
+            ctx.makeContainer(sitekey, "production", client_id, notes, function (success, ndata) {
+              if (!success) {
+                console.log(ndata);
+                throw new Error("Did not successfully create production container.");
+              } else {
+                didproduction = true;
+                checker();
+              }
+            });
+          }
+          if (didstaging && didproduction) {
+            checker();
+          }
         }
       });
-      ctx.makeContainer(sitekey, "production", client_id, notes, function (success, ndata) {
-        if (!success) {
-          console.log(ndata);
-          throw new Error("Did not successfully create production container.");
-        } else {
-          didproduction = true;
-          checker();
-        }
-      });
+
     } else {
       callback(data.statusCode == 200, !!data ? data.message : null);
     }
@@ -450,6 +472,7 @@ FCPClient.prototype.makeContainer = function (sitekey, container, client_id, not
   if (container.length > 45) {
     container = container.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
   }
+  //console.log("POST " + this._constructEndpointURL('sites/' + sitekey + '/containers'), "client_id: ", client_id, "container:", this._formatStringField(container.toLowerCase(), 45));
   rest.post(this._constructEndpointURL('sites/' + sitekey + '/containers'), {
     username: this.username,
     password: this.password,
@@ -459,6 +482,9 @@ FCPClient.prototype.makeContainer = function (sitekey, container, client_id, not
       'client_id': client_id
     }
   }).on('complete', function (data) {
+    if (data.statusCode != 200) {
+      console.log("Failed making container " + container + " for sitekey " + sitekey + " for client ID " + client_id + ": ", data);
+    }
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 };
@@ -526,6 +552,32 @@ FCPClient.prototype.listSites = function (callback) {
         }
         sites['_' + clientid].push(ste);
       }
+    }
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+
+};
+
+/**
+ * List all the containers for a site key
+ * @param sitekey {String} site key
+ * @param callback {Function}
+ */
+FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
+  callback = callback || function () {
+
+    };
+  sitekey = sitekey || '';
+  sitekey = sitekey.toLowerCase().trim();
+  //console.log("GET " + this._constructEndpointURL('/sites/' + sitekey + '/containers'));
+  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers'), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    console.log(data);
+    if (data.statusCode == 404) {
+      data.statusCode = 200;
+      data.message = [];
     }
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
