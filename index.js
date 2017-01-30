@@ -185,7 +185,6 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
       'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
     }
   }).on('complete', function (data) {
-    console.log("Received response from server: ", data);
     callback(data.statusCode == 200, data.message);
   });
 };
@@ -434,7 +433,6 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
           if (!didstaging) {
             ctx.makeContainer(sitekey, "staging", client_id, notes, function (success, ndata) {
               if (!success) {
-                console.log(ndata);
                 throw new Error("Did not successfully create staging container.");
               } else {
                 didstaging = true;
@@ -445,7 +443,6 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
           if (!didproduction) {
             ctx.makeContainer(sitekey, "production", client_id, notes, function (success, ndata) {
               if (!success) {
-                console.log(ndata);
                 throw new Error("Did not successfully create production container.");
               } else {
                 didproduction = true;
@@ -477,7 +474,6 @@ FCPClient.prototype.makeContainer = function (sitekey, container, client_id, not
   if (container.length > 45) {
     container = container.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
   }
-  //console.log("POST " + this._constructEndpointURL('sites/' + sitekey + '/containers'), "client_id: ", client_id, "container:", this._formatStringField(container.toLowerCase(), 45));
   rest.post(this._constructEndpointURL('sites/' + sitekey + '/containers'), {
     username: this.username,
     password: this.password,
@@ -574,12 +570,10 @@ FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
     };
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
-  //console.log("GET " + this._constructEndpointURL('/sites/' + sitekey + '/containers'));
   rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers'), {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
-    console.log(data);
     if (data.statusCode == 404) {
       data.statusCode = 200;
       data.message = [];
@@ -680,6 +674,20 @@ FCPClient.environments = {
 };
 
 /**
+ * Front end environments
+ * @type {{local: string, dev: string, qa: string, qa2: string, stg: string, prod: string}}
+ */
+FCPClient.frontEndEnvironments = {
+  "local": "http://localhost:3001",
+  "dev": "https://dev-gateway.foresee.com",
+  "qa": "https://qa-gateway.foresee.com",
+  "qa2": "https://qa2-gateway.foresee.com",
+  "stg": "https://stg-gateway.foresee.com",
+  "prod": "https://gateway.foresee.com"
+};
+
+
+/**
  * Ask the user for credentials and notes if appropriate
  * @param donotes {Boolean} Ask for notes?
  * @param cb {Function} Callback
@@ -767,16 +775,22 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
       }
       if (result.environment == 0) {
         result.environment = FCPClient.environments.dev;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.dev;
       } else if (result.environment == 1) {
         result.environment = FCPClient.environments.qa;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.qa;
       } else if (result.environment == 2) {
         result.environment = FCPClient.environments.qa2;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.qa2;
       } else if (result.environment == 3) {
         result.environment = FCPClient.environments.stg;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.stg;
       } else if (result.environment == 4) {
         result.environment = FCPClient.environments.prod;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.prod;
       } else if (result.environment == 5) {
         result.environment = FCPClient.environments.local;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.local;
       } else {
         throw new Error("Invalid environment.");
       }
