@@ -65,6 +65,9 @@ FCPClient.prototype._formatStringField = function (str, maxlen) {
  * @private
  */
 FCPClient.prototype._constructEndpointURL = function (endpoint) {
+  if (endpoint.substr(0, 1) == "/") {
+    endpoint = endpoint.substr(1);
+  }
   return this.hostname + "/" + endpoint;
 };
 
