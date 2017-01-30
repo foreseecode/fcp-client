@@ -196,6 +196,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
 FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
   callback = callback || function () {
     };
+  var latest = 1;
 
   rest.post(this._constructEndpointURL('defaultconfig'), {
     multipart: true,
@@ -203,6 +204,7 @@ FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
     password: this.password,
     data: {
       'notes': this._formatStringField(notes),
+      'latest': latest.toString(),
       'config': rest.data("config.js", "application/octet-stream", new Buffer(configStr))
     }
   }).on('complete', function (data) {
