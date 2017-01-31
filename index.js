@@ -35,6 +35,7 @@ var FCPClient = function (username, password, hostname) {
   this.username = username;
   this.password = password;
   this.hostname = hostname;
+  this._log = [];
 };
 
 /**
@@ -72,6 +73,30 @@ FCPClient.prototype._constructEndpointURL = function (endpoint) {
 };
 
 /**
+ * Log an event
+ * @private
+ */
+FCPClient.prototype._logEvent = function () {
+  var str = "";
+  for (var i = 0; i < arguments.length; i++) {
+    try {
+      str += JSON.stringify(arguments[i], function(elm, v) {
+        if (typeof v == typeof {} && v.type && v.type == "Buffer") {
+          return "[BUF]";
+        } else {
+          return v;
+        }
+      });
+    } catch (e) {
+    }
+    if (i > 0) {
+      str += " ";
+    }
+  }
+  this._log.push(str);
+};
+
+/**
  * Post new gateway JS files
  * @param uniminifiedJSStr {String} String containing the unminified JS file
  * @param minifiedJSStr {String} String containing the minified JS file
@@ -96,16 +121,19 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
   var zip = new jsZip();
   zip.file('gateway.js', uniminifiedJSStr);
   zip.file('gateway.min.js', minifiedJSStr);
-  var data = zip.generate({base64: false, compression: 'DEFLATE'});
+  var data = zip.generate({base64: false, compression: 'DEFLATE'}),
+    dobj = {
+      'notes': this._formatStringField(notes),
+      'gateway': rest.data("gateway.zip", "application/octet-stream", data)
+    };
+
+  this._logEvent("POST", this._constructEndpointURL('gateway'), dobj);
 
   rest.post(this._constructEndpointURL('gateway'), {
     multipart: true,
     username: this.username,
     password: this.password,
-    data: {
-      'notes': this._formatStringField(notes),
-      'gateway': rest.data("gateway.zip", "application/octet-stream", data)
-    }
+    data: dobj
   }).on('complete', function (data) {
     callback(data.statusCode == 200);
   });
@@ -136,16 +164,19 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
   var zip = new jsZip();
   zip.file('gatewayconfig.js', uniminifiedJSStr);
   zip.file('gatewayconfig.min.js', minifiedJSStr);
-  var data = zip.generate({base64: false, compression: 'DEFLATE'});
+  var data = zip.generate({base64: false, compression: 'DEFLATE'}),
+    dobj = {
+      'notes': this._formatStringField(notes),
+      'config': rest.data("config.zip", "application/octet-stream", data)
+    };
+
+  this._logEvent("POST", this._constructEndpointURL('gatewayconfig'), dobj);
 
   rest.post(this._constructEndpointURL('gatewayconfig'), {
     multipart: true,
     username: this.username,
     password: this.password,
-    data: {
-      'notes': this._formatStringField(notes),
-      'config': rest.data("config.zip", "application/octet-stream", data)
-    }
+    data: dobj
   }).on('complete', function (data) {
     callback(data.statusCode == 200);
   });
@@ -174,16 +205,20 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
     latest = true;
   }
 
+  var dobj = {
+    'notes': this._formatStringField(notes),
+    'version': version,
+    'latest': latest.toString(),
+    'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
+  };
+
+  this._logEvent("POST", this._constructEndpointURL('code'), dobj);
+
   rest.post(this._constructEndpointURL('code'), {
     multipart: true,
     username: this.username,
     password: this.password,
-    data: {
-      'notes': this._formatStringField(notes),
-      'version': version,
-      'latest': latest.toString(),
-      'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
-    }
+    data: dobj
   }).on('complete', function (data) {
     callback(data.statusCode == 200, data.message);
   });
@@ -227,14 +262,18 @@ FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, conta
   callback = callback || function () {
     };
 
+  var dobj = {
+    'notes': this._formatStringField(notes),
+    'config': rest.data("config.js", "application/javascript", new Buffer(configStr))
+  };
+
+  this._logEvent("POST", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs'), dobj);
+
   rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs'), {
     multipart: true,
     username: this.username,
     password: this.password,
-    data: {
-      'notes': this._formatStringField(notes),
-      'config': rest.data("config.js", "application/javascript", new Buffer(configStr))
-    }
+    data: dobj
   }).on('complete', function (data) {
     callback(data.statusCode == 200, data.message);
   });
@@ -246,6 +285,7 @@ FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, conta
  * @param cb
  */
 FCPClient.prototype.listClients = function (callback) {
+  this._logEvent("GET", this._constructEndpointURL('clients'));
   rest.get(this._constructEndpointURL('clients'), {
     username: this.username,
     password: this.password
@@ -265,6 +305,7 @@ FCPClient.prototype.listClients = function (callback) {
  * @param cb
  */
 FCPClient.prototype.lookupClient = function (searchterm, callback) {
+  this._logEvent("GET", this._constructEndpointURL('clients') + "?search=" + encodeURIComponent(searchterm));
   rest.get(this._constructEndpointURL('clients') + "?search=" + encodeURIComponent(searchterm), {
     username: this.username,
     password: this.password
@@ -284,6 +325,7 @@ FCPClient.prototype.getClient = function (id, callback) {
       callback(true, clients['_' + id]);
     });
   } else {
+    this._logEvent("GET", this._constructEndpointURL('clients/' + id));
     rest.get(this._constructEndpointURL('clients/' + id), {
       username: this.username,
       password: this.password
@@ -302,6 +344,7 @@ FCPClient.prototype.getClient = function (id, callback) {
  * @param callback {Function} Callback
  */
 FCPClient.prototype.reset = function (callback) {
+  this._logEvent("POST", this._constructEndpointURL('reset/'));
   rest.post(this._constructEndpointURL('reset'), {
     username: this.username,
     password: this.password
@@ -339,6 +382,7 @@ FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) 
   if (id > 0) {
     dta.client_id = id;
   }
+  this._logEvent("POST", this._constructEndpointURL('clients'), dta);
   rest.post(this._constructEndpointURL('clients'), {
     username: this.username,
     password: this.password,
@@ -399,6 +443,7 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
     'name': sitekey.toLowerCase().replace(/ /g, ''),
     'client_id': client_id
   };
+  this._logEvent("POST", this._constructEndpointURL('sites'), dta);
   rest.post(this._constructEndpointURL('sites'), {
     username: this.username,
     password: this.password,
@@ -418,7 +463,7 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
             callback(data.statusCode == 200, !!data ? data.message : null);
           }
         };
-      ctx.getContainersForSitekey(sitekey, function(success, result) {
+      ctx.getContainersForSitekey(sitekey, function (success, result) {
         if (!success) {
           console.log("Failed to get containers for site key: ", sitekey, result);
         } else {
@@ -474,14 +519,17 @@ FCPClient.prototype.makeContainer = function (sitekey, container, client_id, not
   if (container.length > 45) {
     container = container.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
   }
+  var dta = {
+    'notes': this._formatStringField(notes),
+    'name': this._formatStringField(container.toLowerCase(), 45),
+    'client_id': client_id
+  };
+
+  this._logEvent("POST", this._constructEndpointURL('sites/' + sitekey + '/containers'), dta);
   rest.post(this._constructEndpointURL('sites/' + sitekey + '/containers'), {
     username: this.username,
     password: this.password,
-    data: {
-      'notes': this._formatStringField(notes),
-      'name': this._formatStringField(container.toLowerCase(), 45),
-      'client_id': client_id
-    }
+    data: dta
   }).on('complete', function (data) {
     if (data.statusCode != 200) {
       console.log("Failed making container " + container + " for sitekey " + sitekey + " for client ID " + client_id + ": ", data);
@@ -536,6 +584,7 @@ FCPClient.prototype.listSites = function (callback) {
   callback = callback || function () {
 
     };
+  this._logEvent("GET", this._constructEndpointURL('sites'));
   rest.get(this._constructEndpointURL('sites'), {
     username: this.username,
     password: this.password
@@ -570,6 +619,7 @@ FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
     };
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
+  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers'));
   rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers'), {
     username: this.username,
     password: this.password
@@ -597,6 +647,7 @@ FCPClient.prototype.listSitesForClient = function (clientid, callback) {
       callback(true, sites['_' + clientid]);
     });
   } else {
+    this._logEvent("GET", this._constructEndpointURL('sites?client_id=' + clientid));
     rest.get(this._constructEndpointURL('sites?client_id=' + clientid), {
       username: this.username,
       password: this.password
@@ -623,8 +674,9 @@ FCPClient.prototype.listSitesForClient = function (clientid, callback) {
  * @param fileBuffer {Buffer} The contents of the ZIP containing all files
  * @param notes {String} Any notes
  * @param callback
+ * @param no_invalidation {Boolean} (Optional). Skip invalidation
  */
-FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback) {
+FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback, no_invalidation) {
   sitekey = sitekey.trim().toLowerCase();
   environment = environment.trim().toLowerCase();
   product = product.trim().toLowerCase();
@@ -635,15 +687,21 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
     throw new Error("Replay is not a valid product code! Use record instead!");
   }
 
+  var dobj = {
+    'notes': this._formatStringField(notes),
+    'config': rest.data("config.js", "application/javascript", new Buffer(snippetConfig)),
+    'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
+  };
+
+  if (no_invalidation) {
+    dobj.no_invalidation = 'true';
+  }
+  this._logEvent("POST", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), dobj);
   rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), {
     multipart: true,
     username: this.username,
     password: this.password,
-    data: {
-      'notes': this._formatStringField(notes),
-      'config': rest.data("config.js", "application/javascript", new Buffer(snippetConfig)),
-      'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
-    }
+    data: dobj
   }).on('complete', function (data) {
     if (data.message.trim().toLowerCase().indexOf("site not found") > -1) {
       console.log("Site was missing. Attempting to create a site called".yellow, sitekey.magenta, "for client".yellow, clientid, "...".yellow);
@@ -714,6 +772,14 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     environment = ev.FCP_ENVIRONMENT;
     //latest = ev.FCP_LATEST || latest;
   } catch (e) {
+  }
+  if (!username) {
+    try {
+      username = process.env.FCP_USERNAME;
+      password = process.env.FCP_PASSWORD;
+    } catch (e) {
+
+    }
   }
 
   if (options.clientId) {
