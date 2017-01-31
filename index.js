@@ -773,6 +773,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
       if (typeof(result.latest) == "undefined") {
         result.latest = latest;
       }
+      result.env = result.environment;
       if (result.environment == 0) {
         result.environment = FCPClient.environments.dev;
         result.frontEndEnvironment = FCPClient.frontEndEnvironments.dev;
