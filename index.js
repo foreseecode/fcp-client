@@ -80,7 +80,7 @@ FCPClient.prototype._logEvent = function () {
   var str = "";
   for (var i = 0; i < arguments.length; i++) {
     try {
-      str += JSON.stringify(arguments[i], function(elm, v) {
+      str += JSON.stringify(arguments[i], function (elm, v) {
         if (typeof v == typeof {} && v.type && v.type == "Buffer") {
           return "[BUF]";
         } else {
@@ -310,8 +310,31 @@ FCPClient.prototype.lookupClient = function (searchterm, callback) {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
+    if (data && typeof data.message == "string") {
+      data.message = [];
+    }
+    if (!data) {
+      data = {
+        statusCode: 200,
+        message: []
+      }
+    }
+    this.listSites(function (success, results) {
+        if (!success) {
+          callback(true, {clients: data.message, sites: []});
+        } else {
+          var finalSitesList = [];
+          for (var i = 0; i < results.length; i++) {
+            var st = results[i];
+            if (st.name.toLowerCase().indexOf(searchterm.toLowerCase().trim()) > -1) {
+              finalSitesList.push(st);
+            }
+          }
+          callback(true, {clients: data.message, sites: finalSitesList});
+        }
+      }.bind(this)
+    );
+  }.bind(this));
 };
 
 /**
