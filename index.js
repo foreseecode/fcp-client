@@ -200,7 +200,8 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
     console.log("Invalid semver version: ".red, version.toString().yellow);
     callback(false);
   }
-
+  
+  latest = latest.toString();
   if (latest != "true" && latest != "false") {
     latest = true;
   }
