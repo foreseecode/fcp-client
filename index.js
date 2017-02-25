@@ -200,7 +200,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
     console.log("Invalid semver version: ".red, version.toString().yellow);
     callback(false);
   }
-  
+
   latest = latest.toString();
   if (latest != "true" && latest != "false") {
     latest = true;
@@ -742,6 +742,10 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   }.bind(this));
 };
 
+FCPClient.environmentShort = [
+  "dev", "qa", "qa2", "stg", "prod", "local"
+];
+
 /**
  * Defines environments
  * @type {{}}
@@ -838,7 +842,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     };
     console.log("Latest: true/false.".yellow);
   }
-  if (typeof(environment) == "undefined") {
+  if (!options.disableEnv && typeof(environment) == "undefined") {
     schema.properties.environment = {
       required: true,
       type: 'integer',
@@ -864,25 +868,12 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
         result.latest = latest;
       }
       result.env = result.environment;
-      if (result.environment == 0) {
-        result.environment = FCPClient.environments.dev;
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments.dev;
-      } else if (result.environment == 1) {
-        result.environment = FCPClient.environments.qa;
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments.qa;
-      } else if (result.environment == 2) {
-        result.environment = FCPClient.environments.qa2;
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments.qa2;
-      } else if (result.environment == 3) {
-        result.environment = FCPClient.environments.stg;
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments.stg;
-      } else if (result.environment == 4) {
-        result.environment = FCPClient.environments.prod;
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments.prod;
-      } else if (result.environment == 5) {
-        result.environment = FCPClient.environments.local;
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments.local;
-      } else {
+
+      if (result.env >= 0 && result.env <= 5) {
+        var es = FCPClient.environmentShort[result.env];
+        result.environment = FCPClient.environments[es];
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments[es];
+      } else if (!options.disableEnv) {
         throw new Error("Invalid environment.");
       }
       cb(result);
