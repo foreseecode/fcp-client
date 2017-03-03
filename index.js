@@ -798,15 +798,16 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     password = ev.FCP_PASSWORD;
     notes = ev.FCP_NOTES;
     environment = ev.FCP_ENVIRONMENT;
-    //latest = ev.FCP_LATEST || latest;
   } catch (e) {
   }
+  // Read FCP credentials from environment variables, if they exist
   if (!username) {
     try {
       username = process.env.FCP_USERNAME;
       password = process.env.FCP_PASSWORD;
+      notes = process.env.FCP_NOTES;
+      environment = process.env.FCP_ENVIRONMENT;
     } catch (e) {
-
     }
   }
 
@@ -870,6 +871,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
       result.env = result.environment;
 
       if (result.env >= 0 && result.env <= 5) {
+        // dev, qa, qa2, stg, prod, local
         var es = FCPClient.environmentShort[result.env];
         result.environment = FCPClient.environments[es];
         result.frontEndEnvironment = FCPClient.frontEndEnvironments[es];
