@@ -700,7 +700,7 @@ FCPClient.prototype.listSitesForClient = function (clientid, callback) {
  * @param callback
  * @param no_invalidation {Boolean} (Optional). Skip invalidation
  */
-FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback, no_invalidation) {
+FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback, no_invalidation, jsonconfig) {
   sitekey = sitekey.trim().toLowerCase();
   environment = environment.trim().toLowerCase();
   product = product.trim().toLowerCase();
@@ -716,6 +716,10 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
     'config': rest.data("config.js", "application/javascript", new Buffer(snippetConfig)),
     'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
   };
+
+  if (jsonconfig) {
+    dobj.json = rest.data("config.json", "application/json", new Buffer(jsonconfig));
+  }
 
   if (no_invalidation) {
     dobj.no_invalidation = 'true';
@@ -741,10 +745,6 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
     }
   }.bind(this));
 };
-
-FCPClient.environmentShort = [
-  "dev", "qa", "qa2", "stg", "prod", "local"
-];
 
 /**
  * Defines environments
@@ -798,16 +798,15 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     password = ev.FCP_PASSWORD;
     notes = ev.FCP_NOTES;
     environment = ev.FCP_ENVIRONMENT;
+    //latest = ev.FCP_LATEST || latest;
   } catch (e) {
   }
-  // Read FCP credentials from environment variables, if they exist
   if (!username) {
     try {
       username = process.env.FCP_USERNAME;
       password = process.env.FCP_PASSWORD;
-      notes = process.env.FCP_NOTES;
-      environment = process.env.FCP_ENVIRONMENT;
     } catch (e) {
+
     }
   }
 
@@ -843,7 +842,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     };
     console.log("Latest: true/false.".yellow);
   }
-  if (!options.disableEnv && typeof(environment) == "undefined") {
+  if (typeof(environment) == "undefined") {
     schema.properties.environment = {
       required: true,
       type: 'integer',
@@ -869,13 +868,25 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
         result.latest = latest;
       }
       result.env = result.environment;
-
-      if (result.env >= 0 && result.env <= 5) {
-        // dev, qa, qa2, stg, prod, local
-        var es = FCPClient.environmentShort[result.env];
-        result.environment = FCPClient.environments[es];
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments[es];
-      } else if (!options.disableEnv) {
+      if (result.environment == 0) {
+        result.environment = FCPClient.environments.dev;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.dev;
+      } else if (result.environment == 1) {
+        result.environment = FCPClient.environments.qa;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.qa;
+      } else if (result.environment == 2) {
+        result.environment = FCPClient.environments.qa2;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.qa2;
+      } else if (result.environment == 3) {
+        result.environment = FCPClient.environments.stg;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.stg;
+      } else if (result.environment == 4) {
+        result.environment = FCPClient.environments.prod;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.prod;
+      } else if (result.environment == 5) {
+        result.environment = FCPClient.environments.local;
+        result.frontEndEnvironment = FCPClient.frontEndEnvironments.local;
+      } else {
         throw new Error("Invalid environment.");
       }
       cb(result);
