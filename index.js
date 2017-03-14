@@ -638,7 +638,7 @@ FCPClient.prototype.listSites = function (callback) {
  * @param notes
  * @param callback
  */
-FCPClient.prototype.promoteStgToProd = function (sitekey, notes, callback) {
+FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callback) {
   var ctx = this;
   callback = callback || function () {
 
@@ -653,19 +653,17 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, callback) {
     if (data.statusCode != 200) {
       callback(false, 'Failed GET on /sites/' + sitekey + '/containers/staging/products');
       return;
-    }
-
-    if (data && Array.isArray(data.message)) {
+    } else if (Array.isArray(data.message)) {
       var dm = data.message;
 
       for (var i = 0, len = dm.length; i < len; i++) {
-        if (dm[i].product !== "feedback") {
+        if (products.indexOf(dm[i].product) > -1) {
           ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dm[i].product));
           rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dm[i].product + '/' + dm[i].tag), {
             username: ctx.username,
             password: ctx.password,
             data: {
-              'notes': ctx._formatStringField(notes)
+              notes: ctx._formatStringField(notes)
             }
           }).on('complete', function (d) {
             if (d.statusCode != 200) {
