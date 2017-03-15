@@ -633,6 +633,52 @@ FCPClient.prototype.listSites = function (callback) {
 };
 
 /**
+ * Promote product configs from staging to production; will not promote feedback
+ * @param sitekey
+ * @param notes
+ * @param callback
+ */
+FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callback) {
+  var ctx = this;
+  callback = callback || function () {
+
+    };
+  sitekey = sitekey || '';
+  sitekey = sitekey.toLowerCase().trim();
+  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/staging/products'));
+  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/staging/products'), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    if (data.statusCode != 200) {
+      callback(false, 'Failed GET on /sites/' + sitekey + '/containers/staging/products');
+      return;
+    } else if (Array.isArray(data.message)) {
+      var dm = data.message;
+
+      for (var i = 0, len = dm.length; i < len; i++) {
+        if (products.indexOf(dm[i].product) > -1) {
+          ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dm[i].product));
+          rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dm[i].product + '/' + dm[i].tag), {
+            username: ctx.username,
+            password: ctx.password,
+            data: {
+              notes: ctx._formatStringField(notes)
+            }
+          }).on('complete', function (d) {
+            if (d.statusCode != 200) {
+              callback(false, "Failed to promote: " + d.message);
+            } else {
+              callback(true, "Promote to prod succeeded: " + d.message.product);
+            }
+          });
+        }
+      }
+    }
+  });
+};
+
+/**
  * List all the containers for a site key
  * @param sitekey {String} site key
  * @param callback {Function}
