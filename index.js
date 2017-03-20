@@ -639,41 +639,63 @@ FCPClient.prototype.listSites = function (callback) {
  * @param callback
  */
 FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callback) {
-  var ctx = this;
+  var ctx = this,
+    dp,
+    dt,
+    ct;
   callback = callback || function () {
 
     };
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/staging/products'));
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/staging/products'), {
+  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/staging'));
+  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/staging'), {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
     if (data.statusCode != 200) {
-      callback(false, 'Failed GET on /sites/' + sitekey + '/containers/staging/products');
-      return;
-    } else if (Array.isArray(data.message)) {
-      var dm = data.message;
+      callback(false, 'Failed GET on /sites/' + sitekey + '/containers/staging');
+    } else if (data.message && data.message.products && data.message.tags && data.message.config_tag) {
+      dp = data.message.products;
+      dt = data.message.tags;
+      ct = data.message.config_tag;
 
-      for (var i = 0, len = dm.length; i < len; i++) {
-        if (products.indexOf(dm[i].product) > -1) {
-          ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dm[i].product));
-          rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dm[i].product + '/' + dm[i].tag), {
+      for (var i = 0, len = dp.length; i < len; i++) {
+        if (products.indexOf(dp[i]) > -1) {
+          ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dp[i] + '/' + dt[i]));
+          rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dp[i] + '/' + dt[i]), {
             username: ctx.username,
             password: ctx.password,
             data: {
               notes: ctx._formatStringField(notes)
             }
-          }).on('complete', function (d) {
+          }).on('complete', function (data) {
             if (d.statusCode != 200) {
-              callback(false, "Failed to promote: " + d.message);
+              callback(false, "Failed to promote: " + data.message);
             } else {
-              callback(true, "Promote to prod succeeded: " + d.message.product);
+              callback(true, "Successfully promoted product config: " + data.message.product);
             }
           });
         }
       }
+
+      ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct));
+      //console.log("ct is ", ct, ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct));
+      rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct), {
+        username: ctx.username,
+        password: ctx.password,
+        data: {
+          notes: ctx._formatStringField(notes)
+        }
+      }).on('complete', function (data) {
+        if (data.message.statuscode != 200) {
+          callback(false, "Failed to promote container config: " + data.message);
+        } else {
+          callback(true, "Successfully promoted container config");
+        }
+      });
+    } else {
+      callback(false, "Failed to promote. One of the following was missing from message: products, tags, config_tag. " + data.message);
     }
   });
 };
