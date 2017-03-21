@@ -662,38 +662,42 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
 
       for (var i = 0, len = dp.length; i < len; i++) {
         if (products.indexOf(dp[i]) > -1) {
-          ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dp[i] + '/' + dt[i]));
-          rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dp[i] + '/' + dt[i]), {
-            username: ctx.username,
-            password: ctx.password,
-            data: {
-              notes: ctx._formatStringField(notes)
-            }
-          }).on('complete', function (data) {
-            if (d.statusCode != 200) {
-              callback(false, "Failed to promote: " + data.message);
-            } else {
-              callback(true, "Successfully promoted product config: " + data.message.product);
-            }
-          });
+          setTimeout(function (prdct, tag) {
+            ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag));
+            rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag), {
+              username: ctx.username,
+              password: ctx.password,
+              data: {
+                notes: ctx._formatStringField(notes)
+              }
+            }).on('complete', function (data) {
+              if (data.statusCode != 200) {
+                callback(false, "Failed to promote: " + data.message);
+              } else {
+                callback(true, "Successfully promoted product config: " + data.message.product);
+              }
+            });
+          }, i * 1000, dp[i], dt[i]);
         }
       }
 
-      ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct));
-      //console.log("ct is ", ct, ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct));
-      rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct), {
-        username: ctx.username,
-        password: ctx.password,
-        data: {
-          notes: ctx._formatStringField(notes)
-        }
-      }).on('complete', function (data) {
-        if (data.message.statuscode != 200) {
-          callback(false, "Failed to promote container config: " + data.message);
-        } else {
-          callback(true, "Successfully promoted container config");
-        }
-      });
+      setTimeout(function (cfgtg) {
+        console.log(cfgtg);
+        ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + cfgtg));
+        rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + cfgtg), {
+          username: ctx.username,
+          password: ctx.password,
+          data: {
+            notes: ctx._formatStringField(notes)
+          }
+        }).on('complete', function (data) {
+          if (data.statusCode != 200) {
+            callback(false, "Failed to promote container config: " + data.message);
+          } else {
+            callback(true, "Successfully promoted container config");
+          }
+        });
+      }, 2500, ct);
     } else {
       callback(false, "Failed to promote. One of the following was missing from message: products, tags, config_tag. " + data.message);
     }
