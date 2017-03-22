@@ -1,9 +1,10 @@
-var jsZip = require('node-zip'),
+var async = require('async'),
+  EventEmitter = require("events"),
   fs = require('fs'),
+  jsZip = require('node-zip'),
   rest = require('restler'),
-  semver = require('semver'),
   prompt = require('prompt'),
-  EventEmitter = require("events");
+  semver = require('semver');
 
 // Some cache
 var clients = {},
@@ -660,8 +661,25 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
       dt = data.message.tags;
       ct = data.message.config_tag;
 
-      for (var i = 0, len = dp.length; i < len; i++) {
-        if (products.indexOf(dp[i]) > -1) {
+     var queue = async.queue(function(task, callback) {
+       console.log("hello " + task.name);
+       callback();
+     });
+      queue.drain = function () {
+        console.log("all items done");
+      };
+
+
+
+
+      for (var i = 0, len = dp.length; i < 8; i++) {
+        console.log("about to add ", i, new Date());
+        queue.push({name: "task" + i}, function () {
+          console.log("inside task number " + i);
+        });
+
+          if (products.indexOf(dp[i]) > -1) {
+
           setTimeout(function (prdct, tag) {
             ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag));
             rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag), {
