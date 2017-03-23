@@ -639,12 +639,12 @@ FCPClient.prototype.listSites = function (callback) {
  * @param notes
  * @param callback
  */
-FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, cb) {
+FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callback) {
   var ctx = this,
     dp,
     dt,
     ct;
-  cb = cb || function () {
+  callback = callback || function () {
 
     };
   sitekey = sitekey || '';
@@ -662,7 +662,6 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, cb) {
       ct = data.message.config_tag;
 
      var queue = async.queue(function(task, callback) {
-       //console.log("starting task " + task.name);
        callback();
      }, 1);
       queue.drain = function () {
@@ -677,9 +676,9 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, cb) {
         }
       }).on('complete', function (data) {
         if (data.statusCode != 200) {
-          cb(false, "Failed to promote container config: " + data.message);
+          callback(false, "Failed to promote container config: " + data.message);
         } else {
-          cb(true, "Successfully promoted container config: " + sitekey + '/production');
+          callback(true, "Successfully promoted container config: " + sitekey + '/production');
         }
 
         for (var i = 0, len = dp.length; i < len; i++) {
@@ -695,9 +694,9 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, cb) {
                   }
                 }).on('complete', function (data) {
                   if (data.statusCode != 200) {
-                    cb(false, "Failed to promote: " + data.message);
+                    callback(false, "Failed to promote: " + data.message);
                   } else {
-                    cb(true, "Successfully promoted product config: " + data.message.product);
+                    callback(true, "Successfully promoted product config: " + data.message.product);
                   }
                 });
               }
