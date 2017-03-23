@@ -1,9 +1,10 @@
-var jsZip = require('node-zip'),
+var async = require('async'),
+  EventEmitter = require("events"),
   fs = require('fs'),
+  jsZip = require('node-zip'),
   rest = require('restler'),
-  semver = require('semver'),
   prompt = require('prompt'),
-  EventEmitter = require("events");
+  semver = require('semver');
 
 // Some cache
 var clients = {},
@@ -660,27 +661,13 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
       dt = data.message.tags;
       ct = data.message.config_tag;
 
-      for (var i = 0, len = dp.length; i < len; i++) {
-        if (products.indexOf(dp[i]) > -1) {
-          ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dp[i] + '/' + dt[i]));
-          rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + dp[i] + '/' + dt[i]), {
-            username: ctx.username,
-            password: ctx.password,
-            data: {
-              notes: ctx._formatStringField(notes)
-            }
-          }).on('complete', function (data) {
-            if (d.statusCode != 200) {
-              callback(false, "Failed to promote: " + data.message);
-            } else {
-              callback(true, "Successfully promoted product config: " + data.message.product);
-            }
-          });
-        }
-      }
+     var queue = async.queue(function(task, callback) {
+       callback();
+     }, 1);
+      queue.drain = function () {
+      };
 
       ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct));
-      //console.log("ct is ", ct, ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct));
       rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct), {
         username: ctx.username,
         password: ctx.password,
@@ -688,10 +675,33 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
           notes: ctx._formatStringField(notes)
         }
       }).on('complete', function (data) {
-        if (data.message.statuscode != 200) {
+        if (data.statusCode != 200) {
           callback(false, "Failed to promote container config: " + data.message);
         } else {
-          callback(true, "Successfully promoted container config");
+          callback(true, "Successfully promoted container config: " + sitekey + '/production');
+        }
+
+        for (var i = 0, len = dp.length; i < len; i++) {
+          if (products.indexOf(dp[i]) > -1) {
+            queue.push({name: "task" + i}, function (prdct, tag) {
+              return function () {
+                ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag));
+                rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag), {
+                  username: ctx.username,
+                  password: ctx.password,
+                  data: {
+                    notes: ctx._formatStringField(notes)
+                  }
+                }).on('complete', function (data) {
+                  if (data.statusCode != 200) {
+                    callback(false, "Failed to promote: " + data.message);
+                  } else {
+                    callback(true, "Successfully promoted product config: " + data.message.product);
+                  }
+                });
+              }
+            }(dp[i], dt[i]));
+          }
         }
       });
     } else {
