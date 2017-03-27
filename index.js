@@ -809,7 +809,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
     password: this.password,
     data: dobj
   }).on('complete', function (data) {
-    if (data.message.trim().toLowerCase().indexOf("site not found") > -1) {
+    if (data.message.trim && data.message.trim().toLowerCase().indexOf("site not found") > -1) {
       console.log("Site was missing. Attempting to create a site called".yellow, sitekey.magenta, "for client".yellow, clientid, "...".yellow);
       this.makeSite(sitekey, clientid, "Making site " + sitekey + " for client " + clientid + " in response to a pushCustomerConfigForProduct", function (success, result) {
         if (success) {
