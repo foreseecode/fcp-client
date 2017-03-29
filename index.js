@@ -764,12 +764,14 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   };
 
   if (jsonconfig) {
-    //dobj.json = rest.data("config.json", "application/json", new Buffer(jsonconfig));
+    dobj.json = rest.data("config.json", "application/javascript", new Buffer(jsonconfig));
   }
 
   if (no_invalidation) {
     dobj.no_invalidation = 'true';
   }
+  //console.log(jsonconfig);
+
   this._logEvent("POST", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), dobj);
   rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), {
     multipart: true,
