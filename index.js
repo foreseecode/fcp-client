@@ -796,7 +796,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   };
 
   if (jsonconfig) {
-    //dobj.json = rest.data("config.json", "application/json", new Buffer(jsonconfig));
+    dobj.json = rest.data("config.json", "application/json", new Buffer(jsonconfig));
   }
 
   if (no_invalidation) {
