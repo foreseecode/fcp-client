@@ -282,6 +282,66 @@ FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, conta
 };
 
 /**
+ * set a config tag for a particular client and container
+ * @param sitekey
+ * @param container
+ * @param tag
+ * @param notes
+ * @param callback
+ */
+FCPClient.prototype.setConfigForSiteContainer = function (sitekey, container, tag, notes, callback) {
+  callback = callback || function () {
+    };
+
+  var dta = {
+    'notes': this._formatStringField(notes)
+  };
+  
+  rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/' + tag), {
+    username: this.username,
+    password: this.password,
+    data: dta
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, data.message, sitekey, container, tag);
+  });
+};
+
+/**
+ * Get the active container config for a particular site and container
+ * @param sitekey
+ * @param container
+ * @param callback
+ */
+FCPClient.prototype.listActiveConfigForSiteContainer = function (sitekey, container, callback) {
+  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs') + '?active=true');
+
+  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs') + '?active=true', {
+    username: this.username,
+    password: this.password,
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, data.message, sitekey, container);
+  });
+};
+
+/**
+ * Get a container config json for a particular site and container
+ * @param sitekey
+ * @param container
+ * @param callback
+ */
+FCPClient.prototype.getConfigForSiteContainer = function (sitekey, container, tag, callback) {
+  var url = this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/' + tag);
+  this._logEvent("GET", url);
+
+  rest.get(url, {
+    username: this.username,
+    password: this.password,
+  }).on('complete', function (data) {
+    callback(data, sitekey, container);
+  });
+};
+
+/**
  * List the clients
  * @param searchterm
  * @param cb
