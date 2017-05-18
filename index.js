@@ -251,6 +251,23 @@ FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
   });
 };
 
+/**
+ * Get the default configuration
+ * @param configStr {String} JSON object as a string
+ * @param notes {String} Notes
+ * @param callback {Function} Callback
+ */
+FCPClient.prototype.getDefaultConfig = function (callback) {
+  callback = callback || function () {};
+  
+  rest.get(this._constructEndpointURL('defaultconfig'), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, data.message);
+  });
+};
+
 
 /**
  * Post a new default configuration for a particular client and container
@@ -793,6 +810,45 @@ FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
 
+};
+
+/**
+ * Get container info for a site key
+ * @param sitekey {String} site key
+ * @param containername {String} container name
+ * @param callback {Function}
+ */
+FCPClient.prototype.getContainerForSitekey = function (sitekey, containername, callback) {
+  callback = callback || function () {};
+  sitekey = sitekey || '';
+  sitekey = sitekey.toLowerCase().trim();
+  
+  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + containername));
+  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + containername), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+};
+
+/**
+ * List the products for a container
+ * @param containerid {Number} Container ID
+ * @param callback {Function} Callback
+ */
+FCPClient.prototype.listProductsForContainer = function (sitekey, container, callback) {
+  callback = callback || function () {};
+  
+  this._logEvent("GET", this._constructEndpointURL('sites/' + siteky + '/container/' + container));
+  
+  rest.get(this._constructEndpointURL('sites/' + siteky + '/container/' + container), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+  
 };
 
 /**
