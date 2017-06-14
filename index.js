@@ -982,7 +982,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     password,
     notes,
     environment,
-    latest = !options.latest,
+    latest,// = !options.latest,
     schema = {
       properties: {}
     };
@@ -1063,7 +1063,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
         result.environment = environment;
       }
       if (typeof(result.latest) == "undefined") {
-        result.latest = latest;
+        result.latest = true;
       }
       result.env = result.environment;
 
