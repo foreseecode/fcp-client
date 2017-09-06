@@ -536,13 +536,14 @@ FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, 
  * @param notes {String} Notes
  * @param callback {Function} Callback
  */
-FCPClient.prototype.makeSite = function (sitekey, client_id, notes, callback) {
+FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callback) {
   var ctx = this;
   callback = callback || function () {
     };
   var dta = {
     'notes': this._formatStringField(notes),
     'name': sitekey.toLowerCase().replace(/ /g, ''),
+    'alias': alias || sitekey.toLowerCase().replace(/ /g, ''),
     'client_id': client_id
   };
   this._logEvent("POST", this._constructEndpointURL('sites'), dta);
