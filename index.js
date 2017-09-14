@@ -537,9 +537,16 @@ FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, 
  * @param callback {Function} Callback
  */
 FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callback) {
+  if (!callback || typeof callback !== "function") {
+    callback = notes;
+    notes = alias;
+    alias = sitekey.toLowerCase().replace(/ /g, '');
+  }
+
+
   var ctx = this;
-  callback = callback || function () {
-    };
+  // callback = callback || function () {
+  //   };
   var dta = {
     'notes': this._formatStringField(notes),
     'name': sitekey.toLowerCase().replace(/ /g, ''),
