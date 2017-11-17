@@ -841,6 +841,25 @@ FCPClient.prototype.getContainerForSitekey = function (sitekey, containername, c
 };
 
 /**
+ * Get publishers info for a site key
+ * @param sitekey {String} site key
+ * @param callback {Function}
+ */
+FCPClient.prototype.getPublishersForSitekey = function (sitekey, callback) {
+  callback = callback || function () { };
+  sitekey = sitekey || '';
+  sitekey = sitekey.toLowerCase().trim();
+
+  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/publishers/'));
+  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/publishers/'), {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+};
+
+/**
  * List the products for a container
  * @param containerid {Number} Container ID
  * @param callback {Function} Callback
