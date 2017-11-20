@@ -868,8 +868,37 @@ FCPClient.prototype.getPublishersForSitekey = function (sitekey, callback) {
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
 
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/publishers/'));
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/publishers/'), {
+  var URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/');
+
+  this._logEvent("GET", URL);
+  rest.get(URL, {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+};
+
+/**
+ * Remove a publisher for a site key
+ * @param sitekey {String} site key
+ * @param publisherId {String} publisher id to remove
+ * @param callback {Function}
+ */
+FCPClient.prototype.removePublisherForSitekey = function (sitekey, publisherId, callback) {
+  callback = callback || function () { };
+  sitekey = sitekey || '';
+  sitekey = sitekey.toLowerCase().trim();
+  try {
+    publisherId = parseInt(publisherId);
+  } catch (ex) {
+    publisherId = null;
+  }
+
+  var URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/' + publisherId);
+
+  this._logEvent("DELETE", URL);
+  rest.del(URL, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
