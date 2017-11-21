@@ -105,8 +105,8 @@ FCPClient.prototype._logEvent = function () {
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
+
   if (!uniminifiedJSStr) {
     throw new Error("Missing unminified JS file.");
   }
@@ -148,8 +148,8 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
+
   if (!uniminifiedJSStr) {
     throw new Error("Missing unminified JS file.");
   }
@@ -193,8 +193,8 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, latest, callback) {
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
+
 
   console.log("postCodeVersion:", version, "bytes:", codeBuffer.length);
   if (!version || !semver.valid(version)) {
@@ -233,8 +233,8 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
+
   var latest = 1;
 
   rest.post(this._constructEndpointURL('defaultconfig'), {
@@ -278,8 +278,8 @@ FCPClient.prototype.getDefaultConfig = function (callback) {
  * @param callback
  */
 FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, container, configStr, notes, callback) {
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
+
 
   var dobj = {
     'notes': this._formatStringField(notes),
@@ -307,8 +307,8 @@ FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, conta
  * @param callback
  */
 FCPClient.prototype.setConfigForSiteContainer = function (sitekey, container, tag, notes, callback) {
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
+
 
   var dta = {
     'notes': this._formatStringField(notes)
@@ -465,8 +465,8 @@ FCPClient.prototype.reset = function (callback) {
  * @param callback {Function} Callback
  */
 FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) {
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
+
   var dta = {
     'notes': this._formatStringField(notes),
     'name': this._formatStringField(name, 127),
@@ -661,8 +661,8 @@ FCPClient.prototype.doesSiteKeyExist = function (sitekey, callback) {
   if (sitekey.length > 45) {
     sitekey = sitekey.substr(0, 45);
   }
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
+
   this.listSites(function (success, info) {
     if (!success) {
       callback(success, false);
@@ -912,9 +912,8 @@ FCPClient.prototype.removePublisherForSitekey = function (sitekey, publisherId, 
  * @param callback {Function} Callback
  */
 FCPClient.prototype.listSitesForClient = function (clientid, callback) {
-  callback = callback || function () {
+  callback = callback || function () { };
 
-  };
   if (sites['_' + clientid]) {
     process.nextTick(function () {
       callback(true, sites['_' + clientid]);
@@ -953,8 +952,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   sitekey = sitekey.trim().toLowerCase();
   environment = environment.trim().toLowerCase();
   product = product.trim().toLowerCase();
-  callback = callback || function () {
-  };
+  callback = callback || function () { };
 
   if (product.toLowerCase().trim() == "replay") {
     throw new Error("Replay is not a valid product code! Use record instead!");
