@@ -105,8 +105,8 @@ FCPClient.prototype._logEvent = function () {
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
+
   if (!uniminifiedJSStr) {
     throw new Error("Missing unminified JS file.");
   }
@@ -122,7 +122,7 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
   var zip = new jsZip();
   zip.file('gateway.js', uniminifiedJSStr);
   zip.file('gateway.min.js', minifiedJSStr);
-  var data = zip.generate({base64: false, compression: 'DEFLATE'}),
+  var data = zip.generate({ base64: false, compression: 'DEFLATE' }),
     dobj = {
       'notes': this._formatStringField(notes),
       'gateway': rest.data("gateway.zip", "application/octet-stream", data)
@@ -148,8 +148,8 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
+
   if (!uniminifiedJSStr) {
     throw new Error("Missing unminified JS file.");
   }
@@ -165,7 +165,7 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
   var zip = new jsZip();
   zip.file('gatewayconfig.js', uniminifiedJSStr);
   zip.file('gatewayconfig.min.js', minifiedJSStr);
-  var data = zip.generate({base64: false, compression: 'DEFLATE'}),
+  var data = zip.generate({ base64: false, compression: 'DEFLATE' }),
     dobj = {
       'notes': this._formatStringField(notes),
       'config': rest.data("config.zip", "application/octet-stream", data)
@@ -193,8 +193,8 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, latest, callback) {
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
+
 
   console.log("postCodeVersion:", version, "bytes:", codeBuffer.length);
   if (!version || !semver.valid(version)) {
@@ -233,8 +233,8 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
+
   var latest = 1;
 
   rest.post(this._constructEndpointURL('defaultconfig'), {
@@ -258,8 +258,8 @@ FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
  * @param callback {Function} Callback
  */
 FCPClient.prototype.getDefaultConfig = function (callback) {
-  callback = callback || function () {};
-  
+  callback = callback || function () { };
+
   rest.get(this._constructEndpointURL('defaultconfig'), {
     username: this.username,
     password: this.password
@@ -278,8 +278,8 @@ FCPClient.prototype.getDefaultConfig = function (callback) {
  * @param callback
  */
 FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, container, configStr, notes, callback) {
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
+
 
   var dobj = {
     'notes': this._formatStringField(notes),
@@ -307,13 +307,13 @@ FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, conta
  * @param callback
  */
 FCPClient.prototype.setConfigForSiteContainer = function (sitekey, container, tag, notes, callback) {
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
+
 
   var dta = {
     'notes': this._formatStringField(notes)
   };
-  
+
   rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/' + tag), {
     username: this.username,
     password: this.password,
@@ -399,19 +399,19 @@ FCPClient.prototype.lookupClient = function (searchterm, callback) {
       }
     }
     this.listSites(function (success, results) {
-        if (!success) {
-          callback(true, {clients: data.message, sites: []});
-        } else {
-          var finalSitesList = [];
-          for (var i = 0; i < results.length; i++) {
-            var st = results[i];
-            if (st.name.toLowerCase().indexOf(searchterm.toLowerCase().trim()) > -1) {
-              finalSitesList.push(st);
-            }
+      if (!success) {
+        callback(true, { clients: data.message, sites: [] });
+      } else {
+        var finalSitesList = [];
+        for (var i = 0; i < results.length; i++) {
+          var st = results[i];
+          if (st.name.toLowerCase().indexOf(searchterm.toLowerCase().trim()) > -1) {
+            finalSitesList.push(st);
           }
-          callback(true, {clients: data.message, sites: finalSitesList});
         }
-      }.bind(this)
+        callback(true, { clients: data.message, sites: finalSitesList });
+      }
+    }.bind(this)
     );
   }.bind(this));
 };
@@ -465,8 +465,8 @@ FCPClient.prototype.reset = function (callback) {
  * @param callback {Function} Callback
  */
 FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) {
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
+
   var dta = {
     'notes': this._formatStringField(notes),
     'name': this._formatStringField(name, 127),
@@ -511,7 +511,7 @@ FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) 
 FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, callback) {
   callback = callback || function () {
 
-    };
+  };
   var args = arguments;
 
   if (!id) {
@@ -543,7 +543,6 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callb
     alias = sitekey.toLowerCase().replace(/ /g, '');
   }
 
-
   var ctx = this;
   // callback = callback || function () {
   //   };
@@ -561,9 +560,9 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callb
   }).on('complete', function (data) {
     if (data.statusCode == 200) {
       if (!sites['_' + client_id]) {
-        sites['_' + client_id] = [{name: sitekey}];
+        sites['_' + client_id] = [{ name: sitekey }];
       } else {
-        sites['_' + client_id].push({name: sitekey});
+        sites['_' + client_id].push({ name: sitekey });
       }
       // Make containers automatically
       var didstaging = false,
@@ -662,8 +661,8 @@ FCPClient.prototype.doesSiteKeyExist = function (sitekey, callback) {
   if (sitekey.length > 45) {
     sitekey = sitekey.substr(0, 45);
   }
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
+
   this.listSites(function (success, info) {
     if (!success) {
       callback(success, false);
@@ -693,7 +692,7 @@ FCPClient.prototype.doesSiteKeyExist = function (sitekey, callback) {
 FCPClient.prototype.listSites = function (callback) {
   callback = callback || function () {
 
-    };
+  };
   this._logEvent("GET", this._constructEndpointURL('sites'));
   rest.get(this._constructEndpointURL('sites'), {
     username: this.username,
@@ -703,7 +702,7 @@ FCPClient.prototype.listSites = function (callback) {
       data.message = [];
       data.statusCode = 200;
     }
-    if (data && data.message && typeof(data.message) == typeof([])) {
+    if (data && data.message && typeof (data.message) == typeof ([])) {
       for (var i = 0; i < data.message.length; i++) {
         var ste = data.message[i],
           clientid = ste.client_id;
@@ -731,7 +730,7 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
     ct;
   callback = callback || function () {
 
-    };
+  };
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
   this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/staging'));
@@ -746,9 +745,9 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
       dt = data.message.tags;
       ct = data.message.config_tag;
 
-     var queue = async.queue(function(task, callback) {
-       callback();
-     }, 1);
+      var queue = async.queue(function (task, callback) {
+        callback();
+      }, 1);
       queue.drain = function () {
       };
 
@@ -768,7 +767,7 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
 
         for (var i = 0, len = dp.length; i < len; i++) {
           if (products.indexOf(dp[i]) > -1) {
-            queue.push({name: "task" + i}, function (prdct, tag) {
+            queue.push({ name: "task" + i }, function (prdct, tag) {
               return function () {
                 ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag));
                 rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag), {
@@ -803,7 +802,7 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
 FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
   callback = callback || function () {
 
-    };
+  };
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
   this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers'));
@@ -827,10 +826,10 @@ FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
  * @param callback {Function}
  */
 FCPClient.prototype.getContainerForSitekey = function (sitekey, containername, callback) {
-  callback = callback || function () {};
+  callback = callback || function () { };
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
-  
+
   this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + containername));
   rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + containername), {
     username: this.username,
@@ -846,17 +845,65 @@ FCPClient.prototype.getContainerForSitekey = function (sitekey, containername, c
  * @param callback {Function} Callback
  */
 FCPClient.prototype.listProductsForContainer = function (sitekey, container, callback) {
-  callback = callback || function () {};
-  
+  callback = callback || function () { };
+
   this._logEvent("GET", this._constructEndpointURL('sites/' + siteky + '/container/' + container));
-  
+
   rest.get(this._constructEndpointURL('sites/' + siteky + '/container/' + container), {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
-  
+
+};
+
+/**
+ * Get publishers info for a site key
+ * @param sitekey {String} site key
+ * @param callback {Function}
+ */
+FCPClient.prototype.getPublishersForSitekey = function (sitekey, callback) {
+  callback = callback || function () { };
+  sitekey = sitekey || '';
+  sitekey = sitekey.toLowerCase().trim();
+
+  var URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/');
+
+  this._logEvent("GET", URL);
+  rest.get(URL, {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
+};
+
+/**
+ * Remove a publisher for a site key
+ * @param sitekey {String} site key
+ * @param publisherId {String} publisher id to remove
+ * @param callback {Function}
+ */
+FCPClient.prototype.removePublisherForSitekey = function (sitekey, publisherId, callback) {
+  callback = callback || function () { };
+  sitekey = sitekey || '';
+  sitekey = sitekey.toLowerCase().trim();
+  try {
+    publisherId = parseInt(publisherId);
+  } catch (ex) {
+    publisherId = null;
+  }
+
+  var URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/' + publisherId);
+
+  this._logEvent("DELETE", URL);
+  rest.del(URL, {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    callback(data.statusCode == 200, !!data ? data.message : null);
+  });
 };
 
 /**
@@ -865,9 +912,8 @@ FCPClient.prototype.listProductsForContainer = function (sitekey, container, cal
  * @param callback {Function} Callback
  */
 FCPClient.prototype.listSitesForClient = function (clientid, callback) {
-  callback = callback || function () {
+  callback = callback || function () { };
 
-    };
   if (sites['_' + clientid]) {
     process.nextTick(function () {
       callback(true, sites['_' + clientid]);
@@ -906,8 +952,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   sitekey = sitekey.trim().toLowerCase();
   environment = environment.trim().toLowerCase();
   product = product.trim().toLowerCase();
-  callback = callback || function () {
-    };
+  callback = callback || function () { };
 
   if (product.toLowerCase().trim() == "replay") {
     throw new Error("Replay is not a valid product code! Use record instead!");
@@ -1048,7 +1093,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     };
     console.log("Latest: true/false.".yellow);
   }
-  if (!options.disableEnv && typeof(environment) == "undefined") {
+  if (!options.disableEnv && typeof (environment) == "undefined") {
     schema.properties.environment = {
       required: true,
       type: 'integer',
@@ -1067,10 +1112,10 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
       if (result.username.indexOf('@') == -1) {
         result.username = result.username.trim() + '@aws.foreseeresults.com';
       }
-      if (typeof(environment) != "undefined") {
+      if (typeof (environment) != "undefined") {
         result.environment = environment;
       }
-      if (typeof(result.latest) == "undefined") {
+      if (typeof (result.latest) == "undefined") {
         result.latest = true;
       }
       result.env = result.environment;
