@@ -347,7 +347,7 @@ FCPClient.prototype.listActiveConfigForSiteContainer = function (sitekey, contai
  * @param callback
  */
 FCPClient.prototype.getConfigForSiteContainer = function (sitekey, container, tag, callback) {
-  var url = this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/' + tag);
+  var url = this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/files/' + tag);
   this._logEvent("GET", url);
 
   rest.get(url, {
