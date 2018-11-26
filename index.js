@@ -198,7 +198,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
   console.log("postCodeVersion:", version, "bytes:", codeBuffer.length);
   if (!version || !semver.valid(version)) {
     console.log("Invalid semver version: ".red, version.toString().yellow);
-    callback(false);
+    return callback(false);
   }
 
   latest = latest.toString();
@@ -211,6 +211,20 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
 
   if (latest != "true" && latest != "false") {
     latest = "true";
+  }
+
+  if (this.hostname === FCPClient.environments.prod) {
+    var pre = semver.prerelease(version);
+    if (pre && pre.length > 0) {
+      if (pre[0] !== "rc") {
+        console.log("Cowardly refusing to push to prod a non-rc prerelease version".red);
+        return callback(false);
+      }
+
+      // force prereleases pushed to prod to be invalid
+      latest = "false";
+      invalid = "true";
+    }
   }
 
   var dobj = {
