@@ -184,12 +184,11 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
 };
 
 /**
- * Post new config JS files
- * @param uniminifiedJSStr {String} String containing the unminified JS file
- * @param minifiedJSStr {String} String containing the minified JS file
+ * Post new code JS files
+ * @param codeBuffer {Buffer} The zipped code
  * @param notes {String} Comments on this release
  * @param version {String} Semver version
- * @param latest {Bool} Is this the latest?
+ * @param latest {Bool|String} Is this the latest? (or invalid?)
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, latest, callback) {
@@ -199,18 +198,40 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
   console.log("postCodeVersion:", version, "bytes:", codeBuffer.length);
   if (!version || !semver.valid(version)) {
     console.log("Invalid semver version: ".red, version.toString().yellow);
-    callback(false);
+    return callback(false);
   }
 
   latest = latest.toString();
-  if (latest != "true" && latest != "false") {
-    latest = true;
+
+  var invalid = "false";
+  if (latest === "invalid") {
+    invalid = "true";
+    latest = "false";
+  }
+
+  if (latest === "undefined" || latest === "") {
+    latest = "true";
+  }
+
+  if (this.hostname === FCPClient.environments.prod) {
+    var pre = semver.prerelease(version);
+    if (pre && pre.length > 0) {
+      if (pre[0] !== "rc") {
+        console.log("Cowardly refusing to push to prod a non-rc prerelease version".red);
+        return callback(false);
+      }
+
+      // force prereleases pushed to prod to be invalid
+      latest = "false";
+      invalid = "true";
+    }
   }
 
   var dobj = {
     'notes': this._formatStringField(notes),
     'version': version,
-    'latest': latest.toString(),
+    'latest': latest,
+    'invalid': invalid,
     'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
   };
 
@@ -1035,7 +1056,6 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     password,
     notes,
     environment,
-    latest,// = !options.latest,
     schema = {
       properties: {}
     };
@@ -1089,9 +1109,10 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
   if (options.latest) {
     schema.properties.latest = {
       required: true,
-      type: 'boolean'
+      type: 'string',
+      pattern: '^(true|false|invalid)$'
     };
-    console.log("Latest: true/false.".yellow);
+    console.log("Latest: true/false/invalid.".yellow);
   }
   if (!options.disableEnv && typeof (environment) == "undefined") {
     schema.properties.environment = {
