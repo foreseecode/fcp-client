@@ -184,12 +184,11 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
 };
 
 /**
- * Post new config JS files
- * @param uniminifiedJSStr {String} String containing the unminified JS file
- * @param minifiedJSStr {String} String containing the minified JS file
+ * Post new code JS files
+ * @param codeBuffer {Buffer} The zipped code
  * @param notes {String} Comments on this release
  * @param version {String} Semver version
- * @param latest {Bool} Is this the latest?
+ * @param latest {Bool|String} Is this the latest? (or invalid?)
  * @param callback {Function} Callback
  */
 FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, latest, callback) {
@@ -203,14 +202,22 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
   }
 
   latest = latest.toString();
+
+  var invalid = "false";
+  if (latest === "invalid") {
+    invalid = "true";
+    latest = "false";
+  }
+
   if (latest != "true" && latest != "false") {
-    latest = true;
+    latest = "true";
   }
 
   var dobj = {
     'notes': this._formatStringField(notes),
     'version': version,
-    'latest': latest.toString(),
+    'latest': latest,
+    'invalid': invalid,
     'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
   };
 
@@ -1035,7 +1042,6 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     password,
     notes,
     environment,
-    latest,// = !options.latest,
     schema = {
       properties: {}
     };
@@ -1089,9 +1095,10 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
   if (options.latest) {
     schema.properties.latest = {
       required: true,
-      type: 'boolean'
+      type: 'string',
+      pattern: '^(true|false|invalid)$'
     };
-    console.log("Latest: true/false.".yellow);
+    console.log("Latest: true/false/invalid.".yellow);
   }
   if (!options.disableEnv && typeof (environment) == "undefined") {
     schema.properties.environment = {
