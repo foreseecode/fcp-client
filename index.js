@@ -209,7 +209,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
     latest = "false";
   }
 
-  if (latest != "true" && latest != "false") {
+  if (latest === "undefined" || latest === "") {
     latest = "true";
   }
 
