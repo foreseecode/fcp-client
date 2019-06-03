@@ -252,7 +252,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
  * @param version {String} Semver version
  * @param callback {Function} Callback (err, buffer) => {}
  */
-FCPClient.prototype.getCodeVersion = function(version, callback) {
+FCPClient.prototype.getCodePackage = function(version, callback) {
   callback = callback || function () { };
 
   var url = this._constructEndpointURL('/code');
