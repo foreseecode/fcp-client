@@ -248,6 +248,50 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
 };
 
 /**
+ * Get code JS files as zip
+ * @param version {String} Semver version
+ * @param callback {Function} Callback (err, buffer) => {}
+ */
+FCPClient.prototype.getCodeVersion = function(version, callback) {
+  callback = callback || function () { };
+
+  var url = this._constructEndpointURL('/code');
+  this._logEvent("GET", url);
+
+  rest.get(url, {
+    username: this.username,
+    password: this.password,
+  }).on('complete', function (data) {
+    if (data.statusCode !== 200) {
+      return callback(new Error("Failed to fetch code versions: " +JSON.stringify(data)));
+    }
+
+    // find the id of the version
+    var verdata = data.message.find(v => v.version === version);
+
+    if (!verdata) {
+      return callback(new Error("Could not find version: " + version));
+    }
+
+    var verurl = this._constructEndpointURL('/code/files/' + verdata.id);
+    this._logEvent("GET", verurl);
+
+    rest.get(verurl, {
+      username: this.username,
+      password: this.password,
+
+      // don't convert to string please
+      decoding: "buffer",
+    }).on('complete', function(data) {
+      if (data instanceof Error) {
+        return callback(data);
+      }
+      callback(null, data);
+    });
+  }.bind(this));
+};
+
+/**
  * Post a new default configuration
  * @param configStr {String} JSON object as a string
  * @param notes {String} Notes
