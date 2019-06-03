@@ -248,9 +248,15 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
 };
 
 /**
- * Get code JS files as zip
+ * Get code JS files as zip.
+ *
+ * Returns a list of {folder, name, buffer} objects where
+ * folder is a bool to indicate if it's a folder or not,
+ * name is the path of the file, and buffer is the contents
+ * if it's not a folder.
+ *
  * @param version {String} Semver version
- * @param callback {Function} Callback (err, buffer) => {}
+ * @param callback {Function} Callback (err, fileList) => {}
  */
 FCPClient.prototype.getCodePackage = function(version, callback) {
   callback = callback || function () { };
@@ -286,7 +292,18 @@ FCPClient.prototype.getCodePackage = function(version, callback) {
       if (data instanceof Error) {
         return callback(data);
       }
-      callback(null, data);
+
+      // Unzip the files
+      var zip = new jsZip(data, {createFolders: true, checkCRC32: true});
+      var files = Object.values(zip.files).map(function(file) {
+        // convert API to simplify consuming code
+        return {
+          folder: file.dir,
+          name: file.name,
+          buffer: file.dir ? null : file.asNodeBuffer(),
+        };
+      });
+      return callback(null, files);
     });
   }.bind(this));
 };
