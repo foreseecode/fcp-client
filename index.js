@@ -742,7 +742,7 @@ FCPClient.prototype.makeContainer = function (sitekey, container, client_id, not
     password: this.password,
     data: dta
   }).on('complete', function (data) {
-    if (data.statusCode != 200) {
+    if (data.statusCode != 200 && !callback) {
       console.log(`Failed making container ${container} for sitekey ${sitekey} for client ID ${client_id}: `, data);
     }
     callback(data.statusCode == 200, !!data ? data.message : null);
