@@ -1,6 +1,6 @@
 {
   "name": "fcp-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Node interface for FCP API",
   "main": "index.js",
   "scripts": {
@@ -21,9 +21,10 @@
   "homepage": "https://github.com/foreseecode/fcp-client#readme",
   "dependencies": {
     "async": "*",
-    "restler": "3.4.0",
+    "chalk": "*",
     "node-zip": "1.1.1",
-    "semver": "*",
-    "prompt": "^1.0.0"
+    "prompt": "^1.0.0",
+    "restler": "3.4.0",
+    "semver": "*"
   }
 }

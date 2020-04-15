@@ -902,6 +902,93 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
 };
 
 /**
+ * Promote global container config from container to container
+ * @param options - object that contains sitekey, from and to containers, notes
+ * @param callback
+ */
+FCPClient.prototype.promoteConfig = function (options, callback) {
+  const ctx = this;
+  callback = callback || function () {};
+  const sitekey = options && options.sitekey ? options.sitekey.toLowerCase().trim() : '';
+  const fromContainer = options && options.from ? options.from.toLowerCase().trim() : 'development';
+  const toContainer = options && options.to ? options.to.toLowerCase().trim() : 'staging';
+  const notes = options && options.notes ? ctx._formatStringField(options.notes) : `Pushing container config from ${toContainer} to ${fromContainer}.`;
+  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${fromContainer}/configs?active=true`);
+  this._logEvent("GET", getUrl);
+  rest.get(getUrl, {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    if (data.statusCode != 200) {
+      callback(false, `Failed GET on ${getUrl}\n  - ${data.message}`);
+    } else if (data && data.message && data.message.tag) {
+      const postUrl = ctx._constructEndpointURL(`/sites/${sitekey}/containers/${toContainer}/configs/${data.message.tag}`);
+      ctx._logEvent("POST", postUrl);
+      rest.post(postUrl, {
+        username: ctx.username,
+        password: ctx.password,
+        data: {
+          notes: ctx._formatStringField(notes)
+        }
+      }).on('complete', function (data) {
+        if (data.statusCode != 200) {
+          callback(false, "Failed to promote container config: " + data.message);
+        } else {
+          callback(true, { tag:data.message.tag });
+        }
+      });
+    } else {
+      callback(false, "Failed to promote. Tag was missing from /GET response message: " + data.message);
+    }
+  });
+};
+
+/**
+ * Promote product config from container to container
+ * @param options - object that contains sitekey, from and to containers, product, notes
+ * @param callback
+ */
+FCPClient.prototype.promoteProduct = function (options, callback) {
+  const ctx = this;
+  callback = callback || function () {};
+  const sitekey = options && options.sitekey ? options.sitekey.toLowerCase().trim() : '';
+  const fromContainer = options && options.from ? options.from.toLowerCase().trim() : 'development';
+  const toContainer = options && options.to ? options.to.toLowerCase().trim() : 'staging';
+  const product = options && options.product ? options.product.toLowerCase().trim() : null;
+  const notes = options && options.notes ? ctx._formatStringField(options.notes) : `Pushing ${product} config from ${toContainer} to ${fromContainer}.`;
+  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${fromContainer}/products`);
+  this._logEvent("GET", getUrl);
+  rest.get(getUrl, {
+    username: this.username,
+    password: this.password
+  }).on('complete', function (data) {
+    if (data.statusCode != 200) {
+      callback(false, `Failed GET on ${getUrl}\n  - ${data.message}`);
+    } else if (data && data.message && typeof(data.message) === 'object' && data.message.filter(result => result.product === product).length > 0) {
+      const productInfo = data.message.filter(result => result.product === product)[0];
+      const postUrl = ctx._constructEndpointURL(`/sites/${sitekey}/containers/${toContainer}/products/${product}/${productInfo.tag}`);
+
+      ctx._logEvent("POST", postUrl);
+      rest.post(postUrl, {
+        username: ctx.username,
+        password: ctx.password,
+        data: {
+          notes: ctx._formatStringField(notes)
+        }
+      }).on('complete', function (data) {
+        if (data.statusCode != 200) {
+          callback(false, "Failed to promote product config: " + data.message);
+        } else {
+          callback(true, { product: data.message.product, tag: data.message.tag });
+        }
+      });
+    } else {
+      callback(false, "Failed to promote. The message didn't have the product you were looking for. " + data.message);
+    }
+  });
+};
+
+/**
  * List all the containers for a site key
  * @param sitekey {String} site key
  * @param callback {Function}
