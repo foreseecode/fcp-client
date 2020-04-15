@@ -1,17 +1,17 @@
-var async = require('async'),
-  EventEmitter = require("events"),
-  fs = require('fs'),
-  jsZip = require('node-zip'),
-  rest = require('restler'),
-  prompt = require('prompt'),
-  semver = require('semver');
+const async = require('async');
+const EventEmitter = require("events");
+const fs = require('fs');
+const jsZip = require('node-zip');
+const rest = require('restler');
+const prompt = require('prompt');
+const semver = require('semver');
 
 // Some cache
-var clients = {},
-  sites = {};
+const clients = {};
+const sites = {};
 
 // An event emitter
-var clientCreated = new EventEmitter();
+const clientCreated = new EventEmitter();
 
 /**
  * Initialize a new instance of FCP Client
@@ -20,7 +20,7 @@ var clientCreated = new EventEmitter();
  * @param hostname
  * @constructor
  */
-var FCPClient = function (username, password, hostname) {
+const FCPClient = function (username, password, hostname) {
   if (!username) {
     throw new Error("Missing username");
   }
@@ -48,7 +48,7 @@ FCPClient.prototype._formatStringField = function (str, maxlen) {
   if (!maxlen) {
     maxlen = 45000;
   }
-  var nts = str || '';
+  let nts = str || '';
   nts = nts.replace(/:/g, ' ').replace(/\/\//g, '').replace(/\//g, ' ').replace(/\./g, ' ');
   nts = nts.replace(/[^0-9a-zA-Z ]*/g, '');
   nts = nts.trim();
@@ -78,8 +78,8 @@ FCPClient.prototype._constructEndpointURL = function (endpoint) {
  * @private
  */
 FCPClient.prototype._logEvent = function () {
-  var str = "";
-  for (var i = 0; i < arguments.length; i++) {
+  let str = "";
+  for (let i = 0; i < arguments.length; i++) {
     try {
       str += JSON.stringify(arguments[i], function (elm, v) {
         if (typeof v == typeof {} && v.type && v.type == "Buffer") {
@@ -119,14 +119,14 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
   if (minifiedJSStr.length >= uniminifiedJSStr) {
     throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
   }
-  var zip = new jsZip();
+  const zip = new jsZip();
   zip.file('gateway.js', uniminifiedJSStr);
   zip.file('gateway.min.js', minifiedJSStr);
-  var data = zip.generate({ base64: false, compression: 'DEFLATE' }),
-    dobj = {
-      'notes': this._formatStringField(notes),
-      'gateway': rest.data("gateway.zip", "application/octet-stream", data)
-    };
+  const data = zip.generate({ base64: false, compression: 'DEFLATE' });
+  const dobj = {
+    'notes': this._formatStringField(notes),
+    'gateway': rest.data("gateway.zip", "application/octet-stream", data)
+  };
 
   this._logEvent("POST", this._constructEndpointURL('gateway'), dobj);
 
@@ -162,14 +162,14 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
   if (minifiedJSStr.length >= uniminifiedJSStr) {
     throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
   }
-  var zip = new jsZip();
+  const zip = new jsZip();
   zip.file('gatewayconfig.js', uniminifiedJSStr);
   zip.file('gatewayconfig.min.js', minifiedJSStr);
-  var data = zip.generate({ base64: false, compression: 'DEFLATE' }),
-    dobj = {
-      'notes': this._formatStringField(notes),
-      'config': rest.data("config.zip", "application/octet-stream", data)
-    };
+  const data = zip.generate({ base64: false, compression: 'DEFLATE' });
+  const dobj = {
+    'notes': this._formatStringField(notes),
+    'config': rest.data("config.zip", "application/octet-stream", data)
+  };
 
   this._logEvent("POST", this._constructEndpointURL('gatewayconfig'), dobj);
 
@@ -203,7 +203,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
 
   latest = latest.toString();
 
-  var invalid = "false";
+  let invalid = "false";
   if (latest === "invalid") {
     invalid = "true";
     latest = "false";
@@ -214,7 +214,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
   }
 
   if (this.hostname === FCPClient.environments.prod) {
-    var pre = semver.prerelease(version);
+    const pre = semver.prerelease(version);
     if (pre && pre.length > 0) {
       if (pre[0] !== "rc") {
         console.log("Cowardly refusing to push to prod a non-rc prerelease version".red);
@@ -227,7 +227,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
     }
   }
 
-  var dobj = {
+  const dobj = {
     'notes': this._formatStringField(notes),
     'version': version,
     'latest': latest,
@@ -261,7 +261,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
 FCPClient.prototype.getCodePackage = function(version, callback) {
   callback = callback || function () { };
 
-  var url = this._constructEndpointURL('/code');
+  const url = this._constructEndpointURL('/code');
   this._logEvent("GET", url);
 
   rest.get(url, {
@@ -273,13 +273,13 @@ FCPClient.prototype.getCodePackage = function(version, callback) {
     }
 
     // find the id of the version
-    var verdata = data.message.find(v => v.version === version);
+    const verdata = data.message.find(v => v.version === version);
 
     if (!verdata) {
       return callback(new Error("Could not find version: " + version));
     }
 
-    var verurl = this._constructEndpointURL('/code/files/' + verdata.id);
+    const verurl = this._constructEndpointURL('/code/files/' + verdata.id);
     this._logEvent("GET", verurl);
 
     rest.get(verurl, {
@@ -294,8 +294,8 @@ FCPClient.prototype.getCodePackage = function(version, callback) {
       }
 
       // Unzip the files
-      var zip = new jsZip(data, {createFolders: true, checkCRC32: true});
-      var files = Object.values(zip.files).map(function(file) {
+      const zip = new jsZip(data, {createFolders: true, checkCRC32: true});
+      const files = Object.values(zip.files).map(function(file) {
         // convert API to simplify consuming code
         return {
           folder: file.dir,
@@ -317,7 +317,7 @@ FCPClient.prototype.getCodePackage = function(version, callback) {
 FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
   callback = callback || function () { };
 
-  var latest = 1;
+  const latest = 1;
 
   rest.post(this._constructEndpointURL('defaultconfig'), {
     multipart: true,
@@ -363,7 +363,7 @@ FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, conta
   callback = callback || function () { };
 
 
-  var dobj = {
+  const dobj = {
     'notes': this._formatStringField(notes),
     'config': rest.data("config.js", "application/javascript", new Buffer(configStr))
   };
@@ -392,7 +392,7 @@ FCPClient.prototype.setConfigForSiteContainer = function (sitekey, container, ta
   callback = callback || function () { };
 
 
-  var dta = {
+  const dta = {
     'notes': this._formatStringField(notes)
   };
 
@@ -429,7 +429,7 @@ FCPClient.prototype.listActiveConfigForSiteContainer = function (sitekey, contai
  * @param callback
  */
 FCPClient.prototype.getConfigForSiteContainer = function (sitekey, container, tag, callback) {
-  var url = this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/files/' + tag);
+  const url = this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/files/' + tag);
   this._logEvent("GET", url);
 
   rest.get(url, {
@@ -452,7 +452,7 @@ FCPClient.prototype.listClients = function (callback) {
     password: this.password
   }).on('complete', function (data) {
     if (data.statusCode == 200) {
-      for (var i = 0; i < data.message.length; i++) {
+      for (let i = 0; i < data.message.length; i++) {
         clients['_' + data.message[i].id] = data.message[i];
       }
     }
@@ -484,9 +484,9 @@ FCPClient.prototype.lookupClient = function (searchterm, callback) {
       if (!success) {
         callback(true, { clients: data.message, sites: [] });
       } else {
-        var finalSitesList = [];
-        for (var i = 0; i < results.length; i++) {
-          var st = results[i];
+        const finalSitesList = [];
+        for (let i = 0; i < results.length; i++) {
+          const st = results[i];
           if (st.name.toLowerCase().indexOf(searchterm.toLowerCase().trim()) > -1) {
             finalSitesList.push(st);
           }
@@ -549,7 +549,7 @@ FCPClient.prototype.reset = function (callback) {
 FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) {
   callback = callback || function () { };
 
-  var dta = {
+  const dta = {
     'notes': this._formatStringField(notes),
     'name': this._formatStringField(name, 127),
     'metadata': this._formatStringField(metadata)
@@ -594,7 +594,7 @@ FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, 
   callback = callback || function () {
 
   };
-  var args = arguments;
+  const args = arguments;
 
   if (!id) {
     throw new Error("Invalid client ID");
@@ -625,10 +625,10 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callb
     alias = sitekey.toLowerCase().replace(/ /g, '');
   }
 
-  var ctx = this;
+  const ctx = this;
   // callback = callback || function () {
   //   };
-  var dta = {
+  const dta = {
     'notes': this._formatStringField(notes),
     'name': sitekey.toLowerCase().replace(/ /g, ''),
     'alias': alias || sitekey.toLowerCase().replace(/ /g, ''),
@@ -647,18 +647,18 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callb
         sites['_' + client_id].push({ name: sitekey });
       }
       // Make containers automatically
-      var didstaging = false,
-        didproduction = false,
-        checker = function () {
-          if (didstaging && didproduction) {
-            callback(data.statusCode == 200, !!data ? data.message : null);
-          }
-        };
+      const didstaging = false;
+      const didproduction = false;
+      const checker = function () {
+        if (didstaging && didproduction) {
+          callback(data.statusCode == 200, !!data ? data.message : null);
+        }
+      };
       ctx.getContainersForSitekey(sitekey, function (success, result) {
         if (!success) {
           console.log("Failed to get containers for site key: ", sitekey, result);
         } else {
-          for (var b = 0; b < result.length; b++) {
+          for (let b = 0; b < result.length; b++) {
             if (result[b].name == "production") {
               didproduction = true;
             }
@@ -710,7 +710,7 @@ FCPClient.prototype.makeContainer = function (sitekey, container, client_id, not
   if (container.length > 45) {
     container = container.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
   }
-  var dta = {
+  const dta = {
     'notes': this._formatStringField(notes),
     'name': this._formatStringField(container.toLowerCase(), 45),
     'client_id': client_id
@@ -752,8 +752,8 @@ FCPClient.prototype.doesSiteKeyExist = function (sitekey, callback) {
       if (!info) {
         info = [];
       }
-      var didFind = false;
-      for (var i = 0; i < info.length; i++) {
+      let didFind = false;
+      for (let i = 0; i < info.length; i++) {
         if (info[i].name == sitekey) {
           // found it!
           didFind = true;
@@ -785,9 +785,9 @@ FCPClient.prototype.listSites = function (callback) {
       data.statusCode = 200;
     }
     if (data && data.message && typeof (data.message) == typeof ([])) {
-      for (var i = 0; i < data.message.length; i++) {
-        var ste = data.message[i],
-          clientid = ste.client_id;
+      for (let i = 0; i < data.message.length; i++) {
+        const ste = data.message[i];
+        const clientid = ste.client_id;
         if (!sites['_' + clientid]) {
           sites['_' + clientid] = [];
         }
@@ -806,10 +806,10 @@ FCPClient.prototype.listSites = function (callback) {
  * @param callback
  */
 FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callback) {
-  var ctx = this,
-    dp,
-    dt,
-    ct;
+  const ctx = this;
+  let dp;
+  let dt;
+  let ct;
   callback = callback || function () {
 
   };
@@ -827,7 +827,7 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
       dt = data.message.tags;
       ct = data.message.config_tag;
 
-      var queue = async.queue(function (task, callback) {
+      const queue = async.queue(function (task, callback) {
         callback();
       }, 1);
       queue.drain = function () {
@@ -847,7 +847,7 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
           callback(true, "Successfully promoted container config: " + sitekey + '/production');
         }
 
-        for (var i = 0, len = dp.length; i < len; i++) {
+        for (let i = 0, len = dp.length; i < len; i++) {
           if (products.indexOf(dp[i]) > -1) {
             queue.push({ name: "task" + i }, function (prdct, tag) {
               return function () {
@@ -950,7 +950,7 @@ FCPClient.prototype.getPublishersForSitekey = function (sitekey, callback) {
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
 
-  var URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/');
+  const URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/');
 
   this._logEvent("GET", URL);
   rest.get(URL, {
@@ -977,7 +977,7 @@ FCPClient.prototype.removePublisherForSitekey = function (sitekey, publisherId, 
     publisherId = null;
   }
 
-  var URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/' + publisherId);
+  const URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/' + publisherId);
 
   this._logEvent("DELETE", URL);
   rest.del(URL, {
@@ -1040,7 +1040,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
     throw new Error("Replay is not a valid product code! Use record instead!");
   }
 
-  var dobj = {
+  const dobj = {
     'notes': this._formatStringField(notes),
     'config': rest.data("config.js", "application/javascript", new Buffer(snippetConfig)),
     'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
@@ -1111,15 +1111,15 @@ FCPClient.frontEndEnvironments = {
  * @param cb {Function} Callback
  */
 FCPClient.promptForFCPCredentials = function (options, cb) {
-  var home,
-    ev,
-    username,
-    password,
-    notes,
-    environment,
-    schema = {
-      properties: {}
-    };
+  let home;
+  let ev;
+  let username;
+  let password;
+  let notes;
+  let environment;
+  const schema = {
+    properties: {}
+  };
 
   // Read FCP credentials from ~/env.json, if it exists
   try {
@@ -1204,7 +1204,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
 
       if (result.env >= 0 && result.env <= 5) {
         // dev, qa, qa2, stg, prod, local
-        var es = FCPClient.environmentShort[result.env];
+        const es = FCPClient.environmentShort[result.env];
         result.environment = FCPClient.environments[es];
         result.frontEndEnvironment = FCPClient.frontEndEnvironments[es];
       } else if (!options.disableEnv) {
