@@ -932,7 +932,7 @@ FCPClient.prototype.promoteConfig = function (options, callback) {
         }
       }).on('complete', function (data) {
         if (data.statusCode != 200) {
-          callback(false, "Failed to promote container config: " + data.message);
+          callback(false, `Failed to promote container config: ${data.message}`);
         } else {
           callback(true, { tag:data.message.tag });
         }
@@ -977,7 +977,7 @@ FCPClient.prototype.promoteProduct = function (options, callback) {
         }
       }).on('complete', function (data) {
         if (data.statusCode != 200) {
-          callback(false, "Failed to promote product config: " + data.message);
+          callback(false, `Failed to promote ${product} product config: ${data.message}`);
         } else {
           callback(true, { product: data.message.product, tag: data.message.tag });
         }
