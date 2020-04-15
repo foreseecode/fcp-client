@@ -5,6 +5,7 @@ const jsZip = require('node-zip');
 const rest = require('restler');
 const prompt = require('prompt');
 const semver = require('semver');
+const chalk = require('chalk');
 
 // Some cache
 const clients = {};
@@ -197,7 +198,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
 
   console.log("postCodeVersion:", version, "bytes:", codeBuffer.length);
   if (!version || !semver.valid(version)) {
-    console.log("Invalid semver version: ".red, version.toString().yellow);
+    console.log(chalk.red("Invalid semver version: "), chalk.yellow(version.toString()));
     return callback(false);
   }
 
@@ -217,7 +218,7 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
     const pre = semver.prerelease(version);
     if (pre && pre.length > 0) {
       if (pre[0] !== "rc") {
-        console.log("Cowardly refusing to push to prod a non-rc prerelease version".red);
+        console.log(chalk.red("Cowardly refusing to push to prod a non-rc prerelease version"));
         return callback(false);
       }
 
@@ -1061,12 +1062,12 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
     data: dobj
   }).on('complete', function (data) {
     if (data.message.trim && data.message.trim().toLowerCase().indexOf("site not found") > -1) {
-      console.log("Site was missing. Attempting to create a site called".yellow, sitekey.magenta, "for client".yellow, clientid, "...".yellow);
+      console.log(chalk.yellow("Site was missing. Attempting to create a site called"), chalk.magenta(sitekey), chalk.yellow("for client"), clientid, chalk.yellow("..."));
       this.makeSite(sitekey, clientid, "Making site " + sitekey + " for client " + clientid + " in response to a pushCustomerConfigForProduct", function (success, result) {
         if (success) {
           this.pushCustomerConfigForProduct(clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback);
         } else {
-          console.log("Could not create site: ".red + sitekey.red, result);
+          console.log(chalk.red("Could not create site: " + sitekey), result);
         }
       }.bind(this));
     } else {
@@ -1154,7 +1155,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
     };
   }
   if (!username || !password) {
-    console.log("Please enter your FCP credentials (no @ is needed). ".cyan);
+    console.log(chalk.cyan("Please enter your FCP credentials (no @ is needed). "));
   }
   if (!username) {
     schema.properties.username = {
@@ -1173,7 +1174,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
       type: 'string',
       pattern: '^(true|false|invalid)$'
     };
-    console.log("Latest: true/false/invalid.".yellow);
+    console.log(chalk.yellow("Latest: true/false/invalid."));
   }
   if (!options.disableEnv && typeof (environment) == "undefined") {
     schema.properties.environment = {
@@ -1181,7 +1182,7 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
       type: 'integer',
       message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod, 4 = localhost:3001'
     };
-    console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = stg".green + ", " + "4 = prod".blue + ", " + "5 = localhost:3001");
+    console.log("For environment, enter a number: " + chalk.yellow("0 = dev") + ", " + chalk.magenta("1 = QA") + ", " + chalk.magenta("2 = QA2") + ", " + chalk.green("3 = stg") + ", " + chalk.blue("4 = prod") + ", " + "5 = localhost:3001");
   }
 
   prompt.start();
