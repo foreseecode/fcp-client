@@ -129,9 +129,11 @@ FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr
     'gateway': rest.data("gateway.zip", "application/octet-stream", data)
   };
 
-  this._logEvent("POST", this._constructEndpointURL('gateway'), dobj);
+  const postUrl = this._constructEndpointURL('gateway');
 
-  rest.post(this._constructEndpointURL('gateway'), {
+  this._logEvent("POST", postUrl, dobj);
+
+  rest.post(postUrl, {
     multipart: true,
     username: this.username,
     password: this.password,
@@ -172,9 +174,11 @@ FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr,
     'config': rest.data("config.zip", "application/octet-stream", data)
   };
 
-  this._logEvent("POST", this._constructEndpointURL('gatewayconfig'), dobj);
+  const postUrl = this._constructEndpointURL('gatewayconfig');
 
-  rest.post(this._constructEndpointURL('gatewayconfig'), {
+  this._logEvent("POST", postUrl, dobj);
+
+  rest.post(postUrl, {
     multipart: true,
     username: this.username,
     password: this.password,
@@ -236,9 +240,11 @@ FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, late
     'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
   };
 
-  this._logEvent("POST", this._constructEndpointURL('code'), dobj);
+  const postUrl = this._constructEndpointURL('code');
 
-  rest.post(this._constructEndpointURL('code'), {
+  this._logEvent("POST", postUrl, dobj);
+
+  rest.post(postUrl, {
     multipart: true,
     username: this.username,
     password: this.password,
@@ -280,7 +286,7 @@ FCPClient.prototype.getCodePackage = function(version, callback) {
       return callback(new Error("Could not find version: " + version));
     }
 
-    const verurl = this._constructEndpointURL('/code/files/' + verdata.id);
+    const verurl = this._constructEndpointURL(`/code/files/${verdata.id}`);
     this._logEvent("GET", verurl);
 
     rest.get(verurl, {
@@ -363,15 +369,16 @@ FCPClient.prototype.getDefaultConfig = function (callback) {
 FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, container, configStr, notes, callback) {
   callback = callback || function () { };
 
-
   const dobj = {
     'notes': this._formatStringField(notes),
     'config': rest.data("config.js", "application/javascript", new Buffer(configStr))
   };
 
-  this._logEvent("POST", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs'), dobj);
+  const postUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${container}/configs`);
 
-  rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs'), {
+  this._logEvent("POST", postUrl, dobj);
+
+  rest.post(postUrl, {
     multipart: true,
     username: this.username,
     password: this.password,
@@ -392,12 +399,13 @@ FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, conta
 FCPClient.prototype.setConfigForSiteContainer = function (sitekey, container, tag, notes, callback) {
   callback = callback || function () { };
 
-
   const dta = {
     'notes': this._formatStringField(notes)
   };
 
-  rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/' + tag), {
+  const postUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${container}/configs/${tag}`);
+
+  rest.post(postUrl, {
     username: this.username,
     password: this.password,
     data: dta
@@ -413,9 +421,11 @@ FCPClient.prototype.setConfigForSiteContainer = function (sitekey, container, ta
  * @param callback
  */
 FCPClient.prototype.listActiveConfigForSiteContainer = function (sitekey, container, callback) {
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs') + '?active=true');
+  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${container}/configs?active=true`);
 
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs') + '?active=true', {
+  this._logEvent("GET", getUrl);
+
+  rest.get(getUrl, {
     username: this.username,
     password: this.password,
   }).on('complete', function (data) {
@@ -430,7 +440,8 @@ FCPClient.prototype.listActiveConfigForSiteContainer = function (sitekey, contai
  * @param callback
  */
 FCPClient.prototype.getConfigForSiteContainer = function (sitekey, container, tag, callback) {
-  const url = this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/files/' + tag);
+  const url = this._constructEndpointURL(`/sites/${sitekey}/containers/${container}/configs/files/${tag}`);
+
   this._logEvent("GET", url);
 
   rest.get(url, {
@@ -447,8 +458,9 @@ FCPClient.prototype.getConfigForSiteContainer = function (sitekey, container, ta
  * @param cb
  */
 FCPClient.prototype.listClients = function (callback) {
-  this._logEvent("GET", this._constructEndpointURL('clients'));
-  rest.get(this._constructEndpointURL('clients'), {
+  const getUrl = this._constructEndpointURL('clients');
+  this._logEvent("GET", getUrl);
+  rest.get(getUrl, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
@@ -467,8 +479,9 @@ FCPClient.prototype.listClients = function (callback) {
  * @param cb
  */
 FCPClient.prototype.lookupClient = function (searchterm, callback) {
-  this._logEvent("GET", this._constructEndpointURL('clients') + "?search=" + encodeURIComponent(searchterm));
-  rest.get(this._constructEndpointURL('clients') + "?search=" + encodeURIComponent(searchterm), {
+  const getUrl = this._constructEndpointURL(`clients?search=${encodeURIComponent(searchterm)}`);
+  this._logEvent("GET", getUrl);
+  rest.get(getUrl, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
@@ -510,8 +523,9 @@ FCPClient.prototype.getClient = function (id, callback) {
       callback(true, clients['_' + id]);
     });
   } else {
-    this._logEvent("GET", this._constructEndpointURL('clients/' + id));
-    rest.get(this._constructEndpointURL('clients/' + id), {
+    const getUrl = this._constructEndpointURL(`clients/${id}`);
+    this._logEvent("GET", getUrl);
+    rest.get(getUrl, {
       username: this.username,
       password: this.password
     }).on('complete', function (data) {
@@ -529,8 +543,9 @@ FCPClient.prototype.getClient = function (id, callback) {
  * @param callback {Function} Callback
  */
 FCPClient.prototype.reset = function (callback) {
-  this._logEvent("POST", this._constructEndpointURL('reset/'));
-  rest.post(this._constructEndpointURL('reset'), {
+  const postUrl = this._constructEndpointURL('reset/');
+  this._logEvent("POST", postUrl);
+  rest.post(postUrl, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
@@ -567,8 +582,9 @@ FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) 
   if (id > 0) {
     dta.client_id = id;
   }
-  this._logEvent("POST", this._constructEndpointURL('clients'), dta);
-  rest.post(this._constructEndpointURL('clients'), {
+  const postUrl = this._constructEndpointURL('clients');
+  this._logEvent("POST", postUrl, dta);
+  rest.post(postUrl, {
     username: this.username,
     password: this.password,
     data: dta
@@ -635,8 +651,9 @@ FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callb
     'alias': alias || sitekey.toLowerCase().replace(/ /g, ''),
     'client_id': client_id
   };
-  this._logEvent("POST", this._constructEndpointURL('sites'), dta);
-  rest.post(this._constructEndpointURL('sites'), {
+  const postUrl = this._constructEndpointURL('sites');
+  this._logEvent("POST", postUrl, dta);
+  rest.post(postUrl, {
     username: this.username,
     password: this.password,
     data: dta
@@ -717,14 +734,16 @@ FCPClient.prototype.makeContainer = function (sitekey, container, client_id, not
     'client_id': client_id
   };
 
-  this._logEvent("POST", this._constructEndpointURL('sites/' + sitekey + '/containers'), dta);
-  rest.post(this._constructEndpointURL('sites/' + sitekey + '/containers'), {
+  const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers`);
+
+  this._logEvent("POST", postUrl, dta);
+  rest.post(postUrl, {
     username: this.username,
     password: this.password,
     data: dta
   }).on('complete', function (data) {
     if (data.statusCode != 200) {
-      console.log("Failed making container " + container + " for sitekey " + sitekey + " for client ID " + client_id + ": ", data);
+      console.log(`Failed making container ${container} for sitekey ${sitekey} for client ID ${client_id}: `, data);
     }
     callback(data.statusCode == 200, !!data ? data.message : null);
   });
@@ -776,8 +795,9 @@ FCPClient.prototype.listSites = function (callback) {
   callback = callback || function () {
 
   };
-  this._logEvent("GET", this._constructEndpointURL('sites'));
-  rest.get(this._constructEndpointURL('sites'), {
+  const getUrl = this._constructEndpointURL('sites');
+  this._logEvent("GET", getUrl);
+  rest.get(getUrl, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
@@ -816,13 +836,14 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
   };
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/staging'));
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/staging'), {
+  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/staging`);
+  this._logEvent("GET", getUrl);
+  rest.get(getUrl, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
     if (data.statusCode != 200) {
-      callback(false, 'Failed GET on /sites/' + sitekey + '/containers/staging');
+      callback(false, `Failed GET on /sites/${sitekey}/containers/staging`);
     } else if (data.message && data.message.products && data.message.tags && data.message.config_tag) {
       dp = data.message.products;
       dt = data.message.tags;
@@ -834,8 +855,10 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
       queue.drain = function () {
       };
 
-      ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct));
-      rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct), {
+      const postConfigUrl = ctx._constructEndpointURL(`/sites/${sitekey}/containers/production/configs/${ct}`);
+
+      ctx._logEvent("POST", postConfigUrl);
+      rest.post(postConfigUrl, {
         username: ctx.username,
         password: ctx.password,
         data: {
@@ -845,15 +868,16 @@ FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callb
         if (data.statusCode != 200) {
           callback(false, "Failed to promote container config: " + data.message);
         } else {
-          callback(true, "Successfully promoted container config: " + sitekey + '/production');
+          callback(true, `Successfully promoted container config: ${sitekey}/production`);
         }
 
         for (let i = 0, len = dp.length; i < len; i++) {
           if (products.indexOf(dp[i]) > -1) {
             queue.push({ name: "task" + i }, function (prdct, tag) {
               return function () {
-                ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag));
-                rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag), {
+                const postProductUrl = ctx._constructEndpointURL(`/sites/${sitekey}/containers/production/products/${prdct}/${tag}`);
+                ctx._logEvent("POST", postProductUrl);
+                rest.post(postProductUrl, {
                   username: ctx.username,
                   password: ctx.password,
                   data: {
@@ -888,8 +912,9 @@ FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
   };
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers'));
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers'), {
+  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers`);
+  this._logEvent("GET", getUrl);
+  rest.get(getUrl, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
@@ -913,8 +938,9 @@ FCPClient.prototype.getContainerForSitekey = function (sitekey, containername, c
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
 
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + containername));
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + containername), {
+  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${containername}`);
+  this._logEvent("GET", getUrl);
+  rest.get(getUrl, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
@@ -930,9 +956,11 @@ FCPClient.prototype.getContainerForSitekey = function (sitekey, containername, c
 FCPClient.prototype.listProductsForContainer = function (sitekey, container, callback) {
   callback = callback || function () { };
 
-  this._logEvent("GET", this._constructEndpointURL('sites/' + siteky + '/container/' + container));
+  const getUrl = this._constructEndpointURL(`sites/${sitekey}/container/${container}`);
 
-  rest.get(this._constructEndpointURL('sites/' + siteky + '/container/' + container), {
+  this._logEvent("GET", getUrl);
+
+  rest.get(getUrl, {
     username: this.username,
     password: this.password
   }).on('complete', function (data) {
@@ -951,7 +979,7 @@ FCPClient.prototype.getPublishersForSitekey = function (sitekey, callback) {
   sitekey = sitekey || '';
   sitekey = sitekey.toLowerCase().trim();
 
-  const URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/');
+  const URL = this._constructEndpointURL(`/sites/${sitekey}/publishers/`);
 
   this._logEvent("GET", URL);
   rest.get(URL, {
@@ -978,7 +1006,7 @@ FCPClient.prototype.removePublisherForSitekey = function (sitekey, publisherId, 
     publisherId = null;
   }
 
-  const URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/' + publisherId);
+  const URL = this._constructEndpointURL(`/sites/${sitekey}/publishers/${publisherId}`);
 
   this._logEvent("DELETE", URL);
   rest.del(URL, {
@@ -1002,8 +1030,9 @@ FCPClient.prototype.listSitesForClient = function (clientid, callback) {
       callback(true, sites['_' + clientid]);
     });
   } else {
-    this._logEvent("GET", this._constructEndpointURL('sites?client_id=' + clientid));
-    rest.get(this._constructEndpointURL('sites?client_id=' + clientid), {
+    const getUrl = this._constructEndpointURL(`sites?client_id=${clientid}`);
+    this._logEvent("GET", getUrl);
+    rest.get(getUrl, {
       username: this.username,
       password: this.password
     }).on('complete', function (data) {
@@ -1054,8 +1083,9 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   if (no_invalidation) {
     dobj.no_invalidation = 'true';
   }
-  this._logEvent("POST", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), dobj);
-  rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), {
+  const postUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${environment}/products/${product}`);
+  this._logEvent("POST", postUrl, dobj);
+  rest.post(postUrl, {
     multipart: true,
     username: this.username,
     password: this.password,
@@ -1063,7 +1093,7 @@ FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, 
   }).on('complete', function (data) {
     if (data.message.trim && data.message.trim().toLowerCase().indexOf("site not found") > -1) {
       console.log(chalk.yellow("Site was missing. Attempting to create a site called"), chalk.magenta(sitekey), chalk.yellow("for client"), clientid, chalk.yellow("..."));
-      this.makeSite(sitekey, clientid, "Making site " + sitekey + " for client " + clientid + " in response to a pushCustomerConfigForProduct", function (success, result) {
+      this.makeSite(sitekey, clientid, `Making site ${sitekey} for client ${clientid} in response to a pushCustomerConfigForProduct`, function (success, result) {
         if (success) {
           this.pushCustomerConfigForProduct(clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback);
         } else {
