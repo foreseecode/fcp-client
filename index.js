@@ -1,1314 +1,175 @@
-const async = require('async');
-const EventEmitter = require("events");
+const chalk = require('chalk');
 const fs = require('fs');
 const jsZip = require('node-zip');
+const prompt = require('prompt-async');
 const rest = require('restler');
-const prompt = require('prompt');
-const semver = require('semver');
-const chalk = require('chalk');
+const { promisify } = require("util");
 
-// Some cache
-const clients = {};
-const sites = {};
+// TODO: Add missing updates, deletes, and get logs for everything. Maybe also add missing vendors, etc.
 
-// An event emitter
-const clientCreated = new EventEmitter();
+const restlerOnComplete = data => data.statusCode != 200 ? data : false;
+
+const restlerGet = (url, options, callback) => {
+  rest.get(url, options).on('complete', data => {
+    callback(restlerOnComplete(data),data);
+  });
+};
+
+const restlerPost = (url, options, callback) => {
+  rest.post(url, options).on('complete', data => {
+    callback(restlerOnComplete(data),data);
+  });
+};
+
+const restlerDelete = (url, options, callback) => {
+  rest.del(url, options).on('complete', data => {
+    callback(restlerOnComplete(data),data);
+  });
+};
+
+const getter = async (url, options) => await promisify(restlerGet)(url, options);
+
+const poster = async (url, options) => await promisify(restlerPost)(url, options);
+
+const deleter = async (url, options) => await promisify(restlerDelete)(url, options);
 
 /**
  * Initialize a new instance of FCP Client
- * @param username
- * @param password
- * @param hostname
+ * @param {String} username
+ * @param {String} password
+ * @param {String} hostname
  * @constructor
  */
-const FCPClient = function (username, password, hostname) {
-  if (!username) {
-    throw new Error("Missing username");
-  }
-  if (!password) {
-    throw new Error("Missing password");
-  }
-  if (!hostname) {
-    throw new Error("Missing hostname");
-  }
-  if (hostname.indexOf(":/") == -1) {
-    throw new Error("Hostname should look like https://bla.bla.com with no trailing slashes");
-  }
-  this.username = username;
-  this.password = password;
-  this.hostname = hostname;
-  this._log = [];
-};
+module.exports = class FCPClient {
+  constructor(username, password, hostname) {
+    if (!username) {
+      throw new Error("Missing username");
+    }
+    if (!password) {
+      throw new Error("Missing password");
+    }
+    if (!hostname) {
+      throw new Error("Missing hostname");
+    }
+    if (hostname.indexOf(":/") == -1) {
+      throw new Error("Hostname should look like https://bla.bla.com with no trailing slashes");
+    }
+    this.username = username;
+    this.password = password;
+    this.credentials = {
+      username,
+      password
+    };
+    this.hostname = hostname;
+    this._log = [];
+  };
 
-/**
- * Format notes
- * @param notes
- * @private
- */
-FCPClient.prototype._formatStringField = function (str, maxlen) {
-  if (!maxlen) {
-    maxlen = 45000;
-  }
-  let nts = str || '';
-  nts = nts.replace(/:/g, ' ').replace(/\/\//g, '').replace(/\//g, ' ').replace(/\./g, ' ');
-  nts = nts.replace(/[^0-9a-zA-Z ]*/g, '');
-  nts = nts.trim();
-  if (nts.length === 0) {
-    nts = "No notes provided (_formatNotes fcp-client)";
-  }
-  if (nts.length > maxlen) {
-    nts = nts.substr(0, maxlen);
-  }
-  return nts;
-};
+  static get environmentShort() { return ["dev", "qa", "qa2", "stg", "prod", "local"]; };
 
-/**
- * Return a fully qualified URL for an endpoint
- * @param endpoint
- * @private
- */
-FCPClient.prototype._constructEndpointURL = function (endpoint) {
-  if (endpoint.substr(0, 1) == "/") {
-    endpoint = endpoint.substr(1);
-  }
-  return this.hostname + "/" + endpoint;
-};
+  static get fcpUrls() {
+    return {
+      "local": "http://localhost:3001",
+      "dev": "https://dev-fcp.foresee.com",
+      "qa": "https://qa-fcp.foresee.com",
+      "qa2": "https://qa2-fcp.foresee.com",
+      "stg": "https://stg-fcp.foresee.com",
+      "prod": "https://fcp.foresee.com"
+    };
+  };
 
-/**
- * Log an event
- * @private
- */
-FCPClient.prototype._logEvent = function () {
-  let str = "";
-  for (let i = 0; i < arguments.length; i++) {
+  static get gatewayUrls() {
+    return {
+      "local": "http://localhost:3001",
+      "dev": "https://dev-gateway.foresee.com",
+      "qa": "https://qa-gateway.foresee.com",
+      "qa2": "https://qa2-gateway.foresee.com",
+      "stg": "https://stg-gateway.foresee.com",
+      "prod": "https://gateway.foresee.com"
+    };
+  };
+  
+  /**
+   * Ask the user for credentials and notes if appropriate
+   * @param {Options} options
+   * This could include:
+   *  - {String} username
+   *  - {String} password
+   *  - {String} notes
+   *  - {Number} environment - 0 = dev, 1 = QA, 2 = QA2, 3 = stg, 4 = prod, 5 = local
+   *  - {Boolean} disableEnv - If you want to not require an environment
+   *  - {true/false/invalid} latest - If you want to pass that value on
+   */
+  static async promptForFCPCredentials (options) {
+    options = options || {};
+    let { username, password, notes, environment } = options;
+    let home;
+    let ev;
+    const schema = {
+      properties: {}
+    };
+
+    if(environment && isNaN(environment)) {
+      environment = FCPClient.environmentShort.indexOf(environment);
+    }
+    if(environment && (environment > 5 || environment < 0)) {
+      environment = undefined;
+    }
+    if(environment) options.disableEnv = true;
+  
+    // Read FCP credentials from passed in, ~/env.json or environment variables, if any exist
     try {
-      str += JSON.stringify(arguments[i], function (elm, v) {
-        if (typeof v == typeof {} && v.type && v.type == "Buffer") {
-          return "[BUF]";
-        } else {
-          return v;
-        }
-      });
+      home = process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'];
+      ev = await JSON.parse(fs.readFileSync(home + '/env.json').toString());
+      username = username || ev.FCP_USERNAME || process.env.FCP_USERNAME;
+      password = password || ev.FCP_PASSWORD || process.env.FCP_PASSWORD;
+      notes = notes || ev.FCP_NOTES || process.env.FCP_NOTES;
+      environment = environment || ev.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     } catch (e) {
     }
-    if (i > 0) {
-      str += " ";
+
+    if (!username || !password) {
+      console.log(chalk.cyan("Please enter your FCP credentials (no @ is needed). "));
     }
-  }
-  this._log.push(str);
-};
-
-/**
- * Post new gateway JS files
- * @param uniminifiedJSStr {String} String containing the unminified JS file
- * @param minifiedJSStr {String} String containing the minified JS file
- * @param notes {String} Comments on this release
- * @param callback {Function} Callback
- */
-FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
-  callback = callback || function () { };
-
-  if (!uniminifiedJSStr) {
-    throw new Error("Missing unminified JS file.");
-  }
-  if (!minifiedJSStr) {
-    throw new Error("Missing minified JS file.");
-  }
-  if (!notes) {
-    throw new Error("Missing notes.");
-  }
-  if (minifiedJSStr.length >= uniminifiedJSStr) {
-    throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
-  }
-  const zip = new jsZip();
-  zip.file('gateway.js', uniminifiedJSStr);
-  zip.file('gateway.min.js', minifiedJSStr);
-  const data = zip.generate({ base64: false, compression: 'DEFLATE' });
-  const dobj = {
-    'notes': this._formatStringField(notes),
-    'gateway': rest.data("gateway.zip", "application/octet-stream", data)
-  };
-
-  const postUrl = this._constructEndpointURL('gateway');
-
-  this._logEvent("POST", postUrl, dobj);
-
-  rest.post(postUrl, {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200);
-  });
-};
-
-/**
- * Post new config JS files
- * @param uniminifiedJSStr {String} String containing the unminified JS file
- * @param minifiedJSStr {String} String containing the minified JS file
- * @param notes {String} Comments on this release
- * @param callback {Function} Callback
- */
-FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
-  callback = callback || function () { };
-
-  if (!uniminifiedJSStr) {
-    throw new Error("Missing unminified JS file.");
-  }
-  if (!minifiedJSStr) {
-    throw new Error("Missing minified JS file.");
-  }
-  if (!notes) {
-    throw new Error("Missing notes.");
-  }
-  if (minifiedJSStr.length >= uniminifiedJSStr) {
-    throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
-  }
-  const zip = new jsZip();
-  zip.file('gatewayconfig.js', uniminifiedJSStr);
-  zip.file('gatewayconfig.min.js', minifiedJSStr);
-  const data = zip.generate({ base64: false, compression: 'DEFLATE' });
-  const dobj = {
-    'notes': this._formatStringField(notes),
-    'config': rest.data("config.zip", "application/octet-stream", data)
-  };
-
-  const postUrl = this._constructEndpointURL('gatewayconfig');
-
-  this._logEvent("POST", postUrl, dobj);
-
-  rest.post(postUrl, {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200);
-  });
-};
-
-/**
- * Post new code JS files
- * @param codeBuffer {Buffer} The zipped code
- * @param notes {String} Comments on this release
- * @param version {String} Semver version
- * @param latest {Bool|String} Is this the latest? (or invalid?)
- * @param callback {Function} Callback
- */
-FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, latest, callback) {
-  callback = callback || function () { };
-
-
-  console.log("postCodeVersion:", version, "bytes:", codeBuffer.length);
-  if (!version || !semver.valid(version)) {
-    console.log(chalk.red("Invalid semver version: "), chalk.yellow(version.toString()));
-    return callback(false);
-  }
-
-  latest = latest.toString();
-
-  let invalid = "false";
-  if (latest === "invalid") {
-    invalid = "true";
-    latest = "false";
-  }
-
-  if (latest === "undefined" || latest === "") {
-    latest = "true";
-  }
-
-  if (this.hostname === FCPClient.environments.prod) {
-    const pre = semver.prerelease(version);
-    if (pre && pre.length > 0) {
-      if (pre[0] !== "rc") {
-        console.log(chalk.red("Cowardly refusing to push to prod a non-rc prerelease version"));
-        return callback(false);
-      }
-
-      // force prereleases pushed to prod to be invalid
-      latest = "false";
-      invalid = "true";
-    }
-  }
-
-  const dobj = {
-    'notes': this._formatStringField(notes),
-    'version': version,
-    'latest': latest,
-    'invalid': invalid,
-    'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
-  };
-
-  const postUrl = this._constructEndpointURL('code');
-
-  this._logEvent("POST", postUrl, dobj);
-
-  rest.post(postUrl, {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
-};
-
-/**
- * Get code JS files as zip.
- *
- * Returns a list of {folder, name, buffer} objects where
- * folder is a bool to indicate if it's a folder or not,
- * name is the path of the file, and buffer is the contents
- * if it's not a folder.
- *
- * @param version {String} Semver version
- * @param callback {Function} Callback (err, fileList) => {}
- */
-FCPClient.prototype.getCodePackage = function(version, callback) {
-  callback = callback || function () { };
-
-  const url = this._constructEndpointURL('/code');
-  this._logEvent("GET", url);
-
-  rest.get(url, {
-    username: this.username,
-    password: this.password,
-  }).on('complete', function (data) {
-    if (data.statusCode !== 200) {
-      return callback(new Error("Failed to fetch code versions: " +JSON.stringify(data)));
-    }
-
-    // find the id of the version
-    const verdata = data.message.find(v => v.version === version);
-
-    if (!verdata) {
-      return callback(new Error("Could not find version: " + version));
-    }
-
-    const verurl = this._constructEndpointURL(`/code/files/${verdata.id}`);
-    this._logEvent("GET", verurl);
-
-    rest.get(verurl, {
-      username: this.username,
-      password: this.password,
-
-      // don't convert to string please
-      decoding: "buffer",
-    }).on('complete', function(data) {
-      if (data instanceof Error) {
-        return callback(data);
-      }
-
-      // Unzip the files
-      const zip = new jsZip(data, {createFolders: true, checkCRC32: true});
-      const files = Object.values(zip.files).map(function(file) {
-        // convert API to simplify consuming code
-        return {
-          folder: file.dir,
-          name: file.name,
-          buffer: file.dir ? null : file.asNodeBuffer(),
-        };
-      });
-      return callback(null, files);
-    });
-  }.bind(this));
-};
-
-/**
- * Post a new default configuration
- * @param configStr {String} JSON object as a string
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
-  callback = callback || function () { };
-
-  const latest = 1;
-
-  rest.post(this._constructEndpointURL('defaultconfig'), {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: {
-      'notes': this._formatStringField(notes),
-      'latest': latest.toString(),
-      'config': rest.data("config.js", "application/octet-stream", new Buffer(configStr))
-    }
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
-};
-
-/**
- * Get the default configuration
- * @param configStr {String} JSON object as a string
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.getDefaultConfig = function (callback) {
-  callback = callback || function () { };
-
-  rest.get(this._constructEndpointURL('defaultconfig'), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
-};
-
-
-/**
- * Post a new default configuration for a particular client and container
- * @param sitekey
- * @param container
- * @param configStr
- * @param notes
- * @param callback
- */
-FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, container, configStr, notes, callback) {
-  callback = callback || function () { };
-
-  const dobj = {
-    'notes': this._formatStringField(notes),
-    'config': rest.data("config.js", "application/javascript", new Buffer(configStr))
-  };
-
-  const postUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${container}/configs`);
-
-  this._logEvent("POST", postUrl, dobj);
-
-  rest.post(postUrl, {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
-};
-
-/**
- * set a config tag for a particular client and container
- * @param sitekey
- * @param container
- * @param tag
- * @param notes
- * @param callback
- */
-FCPClient.prototype.setConfigForSiteContainer = function (sitekey, container, tag, notes, callback) {
-  callback = callback || function () { };
-
-  const dta = {
-    'notes': this._formatStringField(notes)
-  };
-
-  const postUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${container}/configs/${tag}`);
-
-  rest.post(postUrl, {
-    username: this.username,
-    password: this.password,
-    data: dta
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message, sitekey, container, tag);
-  });
-};
-
-/**
- * Get the active container config for a particular site and container
- * @param sitekey
- * @param container
- * @param callback
- */
-FCPClient.prototype.listActiveConfigForSiteContainer = function (sitekey, container, callback) {
-  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${container}/configs?active=true`);
-
-  this._logEvent("GET", getUrl);
-
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password,
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message, sitekey, container);
-  });
-};
-
-/**
- * Get a container config json for a particular site and container
- * @param sitekey
- * @param container
- * @param callback
- */
-FCPClient.prototype.getConfigForSiteContainer = function (sitekey, container, tag, callback) {
-  const url = this._constructEndpointURL(`/sites/${sitekey}/containers/${container}/configs/files/${tag}`);
-
-  this._logEvent("GET", url);
-
-  rest.get(url, {
-    username: this.username,
-    password: this.password,
-  }).on('complete', function (data) {
-    callback(data, sitekey, container);
-  });
-};
-
-/**
- * List the clients
- * @param searchterm
- * @param cb
- */
-FCPClient.prototype.listClients = function (callback) {
-  const getUrl = this._constructEndpointURL('clients');
-  this._logEvent("GET", getUrl);
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data.statusCode == 200) {
-      for (let i = 0; i < data.message.length; i++) {
-        clients['_' + data.message[i].id] = data.message[i];
-      }
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Look up a client by a search term
- * @param searchterm
- * @param cb
- */
-FCPClient.prototype.lookupClient = function (searchterm, callback) {
-  const getUrl = this._constructEndpointURL(`clients?search=${encodeURIComponent(searchterm)}`);
-  this._logEvent("GET", getUrl);
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data && typeof data.message == "string") {
-      data.message = [];
-    }
-    if (!data) {
-      data = {
-        statusCode: 200,
-        message: []
-      }
-    }
-    this.listSites(function (success, results) {
-      if (!success) {
-        callback(true, { clients: data.message, sites: [] });
-      } else {
-        const finalSitesList = [];
-        for (let i = 0; i < results.length; i++) {
-          const st = results[i];
-          if (st.name.toLowerCase().indexOf(searchterm.toLowerCase().trim()) > -1) {
-            finalSitesList.push(st);
-          }
-        }
-        callback(true, { clients: data.message, sites: finalSitesList });
-      }
-    }.bind(this)
-    );
-  }.bind(this));
-};
-
-/**
- * Look up a client by its ID
- * @param searchterm
- * @param cb
- */
-FCPClient.prototype.getClient = function (id, callback) {
-  if (clients['_' + id]) {
-    process.nextTick(function () {
-      callback(true, clients['_' + id]);
-    });
-  } else {
-    const getUrl = this._constructEndpointURL(`clients/${id}`);
-    this._logEvent("GET", getUrl);
-    rest.get(getUrl, {
-      username: this.username,
-      password: this.password
-    }).on('complete', function (data) {
-      if (data.statusCode == 200) {
-        clients['_' + id] = data.message;
-      }
-      callback(data.statusCode == 200, !!data ? data.message : null);
-    });
-  }
-};
-
-
-/**
- * Reset a client
- * @param callback {Function} Callback
- */
-FCPClient.prototype.reset = function (callback) {
-  const postUrl = this._constructEndpointURL('reset/');
-  this._logEvent("POST", postUrl);
-  rest.post(postUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    console.log("Reset result: ", data);
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Create a client
- * @param id {Number} Client ID. 0 if auto-assign
- * @param name {String} Client name
- * @param metadata {String} Meta data
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) {
-  callback = callback || function () { };
-
-  const dta = {
-    'notes': this._formatStringField(notes),
-    'name': this._formatStringField(name, 127),
-    'metadata': this._formatStringField(metadata)
-  };
-  if (dta.notes.length === 0) {
-    throw new Error("Missing notes field on make client request.");
-  }
-  if (dta.name.length === 0) {
-    throw new Error("Missing name field on make client request.");
-  }
-  if (dta.metadata.length === 0) {
-    throw new Error("Missing metadata field on make client request.");
-  }
-  if (id > 0) {
-    dta.client_id = id;
-  }
-  const postUrl = this._constructEndpointURL('clients');
-  this._logEvent("POST", postUrl, dta);
-  rest.post(postUrl, {
-    username: this.username,
-    password: this.password,
-    data: dta
-  }).on('complete', function (data) {
-    if (data.statusCode == 200) {
-      clients['_' + data.message.id] = data.message;
-      clientCreated.emit('created');
-      clientCreated.emit('created' + data.message.id);
-      sites['_' + data.message.id] = [];
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Create a client
- * @param id {Number} Client ID. 0 if auto-assign
- * @param name {String} Client name
- * @param metadata {String} Meta data
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, callback) {
-  callback = callback || function () {
-
-  };
-  const args = arguments;
-
-  if (!id) {
-    throw new Error("Invalid client ID");
-  } else {
-    this.getClient(id, function (_id, _name, _metadata, _notes, _callback, ctx) {
-      return function (success, client) {
-        if (!success || !client) {
-          ctx.makeClient(_id, _name, _metadata, _notes, _callback);
-        } else {
-          callback(true, client);
-        }
+    if (!username) {
+      schema.properties.username = {
+        required: true
       };
-    }(id, name, metadata, notes, callback, this));
-  }
-};
-
-/**
- * Make a new site
- * @param sitekey {String} The site key
- * @param client_id {Number} The client ID
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callback) {
-  if (!callback || typeof callback !== "function") {
-    callback = notes;
-    notes = alias;
-    alias = sitekey.toLowerCase().replace(/ /g, '');
-  }
-
-  const ctx = this;
-  // callback = callback || function () {
-  //   };
-  const dta = {
-    'notes': this._formatStringField(notes),
-    'name': sitekey.toLowerCase().replace(/ /g, ''),
-    'alias': alias || sitekey.toLowerCase().replace(/ /g, ''),
-    'client_id': client_id
-  };
-  const postUrl = this._constructEndpointURL('sites');
-  this._logEvent("POST", postUrl, dta);
-  rest.post(postUrl, {
-    username: this.username,
-    password: this.password,
-    data: dta
-  }).on('complete', function (data) {
-    if (data.statusCode == 200) {
-      if (!sites['_' + client_id]) {
-        sites['_' + client_id] = [{ name: sitekey }];
-      } else {
-        sites['_' + client_id].push({ name: sitekey });
+    }
+    if (!password) {
+      schema.properties.password = {
+        hidden: true,
+        required: true
       }
-      // Make containers automatically
-      const didstaging = false;
-      const didproduction = false;
-      const checker = function () {
-        if (didstaging && didproduction) {
-          callback(data.statusCode == 200, !!data ? data.message : null);
-        }
+    }
+    if (!notes) {
+      schema.properties.notes = {
+        required: true
       };
-      ctx.getContainersForSitekey(sitekey, function (success, result) {
-        if (!success) {
-          console.log("Failed to get containers for site key: ", sitekey, result);
-        } else {
-          for (let b = 0; b < result.length; b++) {
-            if (result[b].name == "production") {
-              didproduction = true;
-            }
-            if (result[b].name == "staging") {
-              didstaging = true;
-            }
-          }
-          if (!didstaging) {
-            ctx.makeContainer(sitekey, "staging", client_id, notes, function (success, ndata) {
-              if (!success) {
-                throw new Error("Did not successfully create staging container.");
-              } else {
-                didstaging = true;
-                checker();
-              }
-            });
-          }
-          if (!didproduction) {
-            ctx.makeContainer(sitekey, "production", client_id, notes, function (success, ndata) {
-              if (!success) {
-                throw new Error("Did not successfully create production container.");
-              } else {
-                didproduction = true;
-                checker();
-              }
-            });
-          }
-          if (didstaging && didproduction) {
-            checker();
-          }
-        }
-      });
-
-    } else {
-      callback(data.statusCode == 200, !!data ? data.message : null);
     }
-  });
-};
-
-/**
- * Make a new container
- * @param sitekey {String} The site key
- * @param container {String} The container
- * @param client_id {Number} The client ID
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.makeContainer = function (sitekey, container, client_id, notes, callback) {
-  if (container.length > 45) {
-    container = container.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
-  }
-  const dta = {
-    'notes': this._formatStringField(notes),
-    'name': this._formatStringField(container.toLowerCase(), 45),
-    'client_id': client_id
-  };
-
-  const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers`);
-
-  this._logEvent("POST", postUrl, dta);
-  rest.post(postUrl, {
-    username: this.username,
-    password: this.password,
-    data: dta
-  }).on('complete', function (data) {
-    if (data.statusCode != 200 && !callback) {
-      console.log(`Failed making container ${container} for sitekey ${sitekey} for client ID ${client_id}: `, data);
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Does a particular site key exist?
- * @param sitekey {String} The site key
- * @param callback {Function} Callback. Arguments: success {Boolean}, exists {Boolean}, client {Number}
- */
-FCPClient.prototype.doesSiteKeyExist = function (sitekey, callback) {
-  sitekey = sitekey || '';
-  if (sitekey.trim().length == 0) {
-    throw new Error("Invalid sitekey");
-  }
-  sitekey = sitekey.trim().replace(/[ \t\n\r]/g, '').toLowerCase();
-  if (sitekey.length > 45) {
-    sitekey = sitekey.substr(0, 45);
-  }
-  callback = callback || function () { };
-
-  this.listSites(function (success, info) {
-    if (!success) {
-      callback(success, false);
-    } else {
-      if (!info) {
-        info = [];
-      }
-      let didFind = false;
-      for (let i = 0; i < info.length; i++) {
-        if (info[i].name == sitekey) {
-          // found it!
-          didFind = true;
-          callback(true, true, info[i]);
-        }
-      }
-      if (!didFind) {
-        callback(true, false);
-      }
-    }
-  });
-};
-
-/**
- * List all sites
- * @param callback {Function} Callback
- */
-FCPClient.prototype.listSites = function (callback) {
-  callback = callback || function () {
-
-  };
-  const getUrl = this._constructEndpointURL('sites');
-  this._logEvent("GET", getUrl);
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data && data.statusCode == 404) {
-      data.message = [];
-      data.statusCode = 200;
-    }
-    if (data && data.message && typeof (data.message) == typeof ([])) {
-      for (let i = 0; i < data.message.length; i++) {
-        const ste = data.message[i];
-        const clientid = ste.client_id;
-        if (!sites['_' + clientid]) {
-          sites['_' + clientid] = [];
-        }
-        sites['_' + clientid].push(ste);
-      }
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-
-};
-
-/**
- * Promote product configs from staging to production; will not promote feedback
- * @param sitekey
- * @param notes
- * @param callback
- */
-FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callback) {
-  const ctx = this;
-  let dp;
-  let dt;
-  let ct;
-  callback = callback || function () {
-
-  };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/staging`);
-  this._logEvent("GET", getUrl);
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data.statusCode != 200) {
-      callback(false, `Failed GET on /sites/${sitekey}/containers/staging`);
-    } else if (data.message && data.message.products && data.message.tags && data.message.config_tag) {
-      dp = data.message.products;
-      dt = data.message.tags;
-      ct = data.message.config_tag;
-
-      const queue = async.queue(function (task, callback) {
-        callback();
-      }, 1);
-      queue.drain = function () {
+    if (!options.disableEnv && typeof (environment) == "undefined") {
+      schema.properties.environment = {
+        required: true,
+        type: 'integer',
+        message: '0 = dev, 1 = QA, 2 = QA2, 3 = stg, 4 = prod, 5 = localhost:3001'
       };
-
-      const postConfigUrl = ctx._constructEndpointURL(`/sites/${sitekey}/containers/production/configs/${ct}`);
-
-      ctx._logEvent("POST", postConfigUrl);
-      rest.post(postConfigUrl, {
-        username: ctx.username,
-        password: ctx.password,
-        data: {
-          notes: ctx._formatStringField(notes)
-        }
-      }).on('complete', function (data) {
-        if (data.statusCode != 200) {
-          callback(false, "Failed to promote container config: " + data.message);
-        } else {
-          callback(true, `Successfully promoted container config: ${sitekey}/production`);
-        }
-
-        for (let i = 0, len = dp.length; i < len; i++) {
-          if (products.indexOf(dp[i]) > -1) {
-            queue.push({ name: "task" + i }, function (prdct, tag) {
-              return function () {
-                const postProductUrl = ctx._constructEndpointURL(`/sites/${sitekey}/containers/production/products/${prdct}/${tag}`);
-                ctx._logEvent("POST", postProductUrl);
-                rest.post(postProductUrl, {
-                  username: ctx.username,
-                  password: ctx.password,
-                  data: {
-                    notes: ctx._formatStringField(notes)
-                  }
-                }).on('complete', function (data) {
-                  if (data.statusCode != 200) {
-                    callback(false, "Failed to promote: " + data.message);
-                  } else {
-                    callback(true, "Successfully promoted product config: " + data.message.product);
-                  }
-                });
-              }
-            }(dp[i], dt[i]));
-          }
-        }
-      });
-    } else {
-      callback(false, "Failed to promote. One of the following was missing from message: products, tags, config_tag. " + data.message);
+      console.log("For environment, enter a number: " + chalk.yellow("0 = dev") + ", " + chalk.magenta("1 = QA") + ", " + chalk.magenta("2 = QA2") + ", " + chalk.green("3 = stg") + ", " + chalk.blue("4 = prod") + ", " + "5 = localhost:3001");
     }
-  });
-};
-
-/**
- * Promote global container config from container to container
- * @param options - object that contains sitekey, from and to containers, notes
- * @param callback
- */
-FCPClient.prototype.promoteConfig = function (options, callback) {
-  const ctx = this;
-  callback = callback || function () {};
-  const sitekey = options && options.sitekey ? options.sitekey.toLowerCase().trim() : '';
-  const fromContainer = options && options.from ? options.from.toLowerCase().trim() : 'development';
-  const toContainer = options && options.to ? options.to.toLowerCase().trim() : 'staging';
-  const notes = options && options.notes ? ctx._formatStringField(options.notes) : `Pushing container config from ${toContainer} to ${fromContainer}.`;
-  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${fromContainer}/configs?active=true`);
-  this._logEvent("GET", getUrl);
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data.statusCode != 200) {
-      callback(false, `Failed GET on ${getUrl}\n  - ${data.message}`);
-    } else if (data && data.message && data.message.tag) {
-      const postUrl = ctx._constructEndpointURL(`/sites/${sitekey}/containers/${toContainer}/configs/${data.message.tag}`);
-      ctx._logEvent("POST", postUrl);
-      rest.post(postUrl, {
-        username: ctx.username,
-        password: ctx.password,
-        data: {
-          notes: ctx._formatStringField(notes)
-        }
-      }).on('complete', function (data) {
-        if (data.statusCode != 200) {
-          callback(false, `Failed to promote container config: ${data.message}`);
-        } else {
-          callback(true, { tag:data.message.tag });
-        }
-      });
-    } else {
-      callback(false, "Failed to promote. Tag was missing from /GET response message: " + data.message);
+    if (options.latest) {
+      schema.properties.latest = {
+        required: true,
+        type: 'string',
+        pattern: '^(true|false|invalid)$'
+      };
+      console.log(chalk.yellow("Latest: true/false/invalid."));
     }
-  });
-};
-
-/**
- * Promote product config from container to container
- * @param options - object that contains sitekey, from and to containers, product, notes
- * @param callback
- */
-FCPClient.prototype.promoteProduct = function (options, callback) {
-  const ctx = this;
-  callback = callback || function () {};
-  const sitekey = options && options.sitekey ? options.sitekey.toLowerCase().trim() : '';
-  const fromContainer = options && options.from ? options.from.toLowerCase().trim() : 'development';
-  const toContainer = options && options.to ? options.to.toLowerCase().trim() : 'staging';
-  const product = options && options.product ? options.product.toLowerCase().trim() : null;
-  const notes = options && options.notes ? ctx._formatStringField(options.notes) : `Pushing ${product} config from ${toContainer} to ${fromContainer}.`;
-  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${fromContainer}/products`);
-  this._logEvent("GET", getUrl);
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data.statusCode != 200) {
-      callback(false, `Failed GET on ${getUrl}\n  - ${data.message}`);
-    } else if (data && data.message && typeof(data.message) === 'object' && data.message.filter(result => result.product === product).length > 0) {
-      const productInfo = data.message.filter(result => result.product === product)[0];
-      const postUrl = ctx._constructEndpointURL(`/sites/${sitekey}/containers/${toContainer}/products/${product}/${productInfo.tag}`);
-
-      ctx._logEvent("POST", postUrl);
-      rest.post(postUrl, {
-        username: ctx.username,
-        password: ctx.password,
-        data: {
-          notes: ctx._formatStringField(notes)
-        }
-      }).on('complete', function (data) {
-        if (data.statusCode != 200) {
-          callback(false, `Failed to promote ${product} product config: ${data.message}`);
-        } else {
-          callback(true, { product: data.message.product, tag: data.message.tag });
-        }
-      });
-    } else {
-      callback(false, "Failed to promote. The message didn't have the product you were looking for. " + data.message);
-    }
-  });
-};
-
-/**
- * List all the containers for a site key
- * @param sitekey {String} site key
- * @param callback {Function}
- */
-FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
-  callback = callback || function () {
-
-  };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers`);
-  this._logEvent("GET", getUrl);
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data.statusCode == 404) {
-      data.statusCode = 200;
-      data.message = [];
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-
-};
-
-/**
- * Get container info for a site key
- * @param sitekey {String} site key
- * @param containername {String} container name
- * @param callback {Function}
- */
-FCPClient.prototype.getContainerForSitekey = function (sitekey, containername, callback) {
-  callback = callback || function () { };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-
-  const getUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${containername}`);
-  this._logEvent("GET", getUrl);
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * List the products for a container
- * @param containerid {Number} Container ID
- * @param callback {Function} Callback
- */
-FCPClient.prototype.listProductsForContainer = function (sitekey, container, callback) {
-  callback = callback || function () { };
-
-  const getUrl = this._constructEndpointURL(`sites/${sitekey}/container/${container}`);
-
-  this._logEvent("GET", getUrl);
-
-  rest.get(getUrl, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-
-};
-
-/**
- * Get publishers info for a site key
- * @param sitekey {String} site key
- * @param callback {Function}
- */
-FCPClient.prototype.getPublishersForSitekey = function (sitekey, callback) {
-  callback = callback || function () { };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-
-  const URL = this._constructEndpointURL(`/sites/${sitekey}/publishers/`);
-
-  this._logEvent("GET", URL);
-  rest.get(URL, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Remove a publisher for a site key
- * @param sitekey {String} site key
- * @param publisherId {String} publisher id to remove
- * @param callback {Function}
- */
-FCPClient.prototype.removePublisherForSitekey = function (sitekey, publisherId, callback) {
-  callback = callback || function () { };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-  try {
-    publisherId = parseInt(publisherId);
-  } catch (ex) {
-    publisherId = null;
-  }
-
-  const URL = this._constructEndpointURL(`/sites/${sitekey}/publishers/${publisherId}`);
-
-  this._logEvent("DELETE", URL);
-  rest.del(URL, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * List the site keys for a client
- * @param clientid {Number} Client ID
- * @param callback {Function} Callback
- */
-FCPClient.prototype.listSitesForClient = function (clientid, callback) {
-  callback = callback || function () { };
-
-  if (sites['_' + clientid]) {
-    process.nextTick(function () {
-      callback(true, sites['_' + clientid]);
-    });
-  } else {
-    const getUrl = this._constructEndpointURL(`sites?client_id=${clientid}`);
-    this._logEvent("GET", getUrl);
-    rest.get(getUrl, {
-      username: this.username,
-      password: this.password
-    }).on('complete', function (data) {
-      if (data && data.statusCode == 404 && data.message == "No sites found") {
-        data.message = [];
-        data.statusCode = 200;
-      }
-      if (data.statusCode == 200) {
-        sites['_' + clientid] = data.message;
-      }
-      callback(data.statusCode == 200, !!data ? data.message : null);
-    });
-  }
-};
-
-/**
- * Push a product for a customer
- * @param clientid {Number}
- * @param sitekey {String}
- * @param environment {String} eg: staging/production
- * @param product {String}
- * @param snippetConfig {String} The config snippet
- * @param fileBuffer {Buffer} The contents of the ZIP containing all files
- * @param notes {String} Any notes
- * @param callback
- * @param no_invalidation {Boolean} (Optional). Skip invalidation
- */
-FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback, no_invalidation, jsonconfig) {
-  sitekey = sitekey.trim().toLowerCase();
-  environment = environment.trim().toLowerCase();
-  product = product.trim().toLowerCase();
-  callback = callback || function () { };
-
-  if (product.toLowerCase().trim() == "replay") {
-    throw new Error("Replay is not a valid product code! Use record instead!");
-  }
-
-  const dobj = {
-    'notes': this._formatStringField(notes),
-    'config': rest.data("config.js", "application/javascript", new Buffer(snippetConfig)),
-    'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
-  };
-
-  if (jsonconfig) {
-    dobj.json = rest.data("config.json", "application/json", new Buffer(jsonconfig));
-  }
-
-  if (no_invalidation) {
-    dobj.no_invalidation = 'true';
-  }
-  const postUrl = this._constructEndpointURL(`/sites/${sitekey}/containers/${environment}/products/${product}`);
-  this._logEvent("POST", postUrl, dobj);
-  rest.post(postUrl, {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    if (data.message.trim && data.message.trim().toLowerCase().indexOf("site not found") > -1) {
-      console.log(chalk.yellow("Site was missing. Attempting to create a site called"), chalk.magenta(sitekey), chalk.yellow("for client"), clientid, chalk.yellow("..."));
-      this.makeSite(sitekey, clientid, `Making site ${sitekey} for client ${clientid} in response to a pushCustomerConfigForProduct`, function (success, result) {
-        if (success) {
-          this.pushCustomerConfigForProduct(clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback);
-        } else {
-          console.log(chalk.red("Could not create site: " + sitekey), result);
-        }
-      }.bind(this));
-    } else {
-      callback(data.statusCode == 200, data.message);
-    }
-  }.bind(this));
-};
-
-FCPClient.environmentShort = [
-  "dev", "qa", "qa2", "stg", "prod", "local"
-];
-
-/**
- * Defines environments
- * @type {{}}
- */
-FCPClient.environments = {
-  "local": "http://localhost:3001",
-  "dev": "https://dev-fcp.foresee.com",
-  "qa": "https://qa-fcp.foresee.com",
-  "qa2": "https://qa2-fcp.foresee.com",
-  "stg": "https://stg-fcp.foresee.com",
-  "prod": "https://fcp.foresee.com"
-};
-
-/**
- * Front end environments
- * @type {{local: string, dev: string, qa: string, qa2: string, stg: string, prod: string}}
- */
-FCPClient.frontEndEnvironments = {
-  "local": "http://localhost:3001",
-  "dev": "https://dev-gateway.foresee.com",
-  "qa": "https://qa-gateway.foresee.com",
-  "qa2": "https://qa2-gateway.foresee.com",
-  "stg": "https://stg-gateway.foresee.com",
-  "prod": "https://gateway.foresee.com"
-};
-
-/**
- * Ask the user for credentials and notes if appropriate
- * @param donotes {Boolean} Ask for notes?
- * @param cb {Function} Callback
- */
-FCPClient.promptForFCPCredentials = function (options, cb) {
-  let home;
-  let ev;
-  let username;
-  let password;
-  let notes;
-  let environment;
-  const schema = {
-    properties: {}
-  };
-
-  // Read FCP credentials from ~/env.json, if it exists
-  try {
-    home = process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'];
-    ev = JSON.parse(fs.readFileSync(home + '/env.json').toString());
-    username = ev.FCP_USERNAME;
-    password = ev.FCP_PASSWORD;
-    notes = ev.FCP_NOTES;
-    environment = ev.FCP_ENVIRONMENT;
-  } catch (e) {
-  }
-  // Read FCP credentials from environment variables, if they exist
-  if (!username) {
+  
     try {
-      username = process.env.FCP_USERNAME;
-      password = process.env.FCP_PASSWORD;
-      notes = process.env.FCP_NOTES;
-      environment = process.env.FCP_ENVIRONMENT;
-    } catch (e) {
-    }
-  }
-
-  if (options.clientId) {
-    schema.properties.clientId = {
-      required: true,
-      type: 'string'
-    };
-  }
-  if (options.notes && !notes) {
-    schema.properties.notes = {
-      required: true
-    };
-  }
-  if (!username || !password) {
-    console.log(chalk.cyan("Please enter your FCP credentials (no @ is needed). "));
-  }
-  if (!username) {
-    schema.properties.username = {
-      required: true
-    };
-  }
-  if (!password) {
-    schema.properties.password = {
-      hidden: true,
-      required: true
-    }
-  }
-  if (options.latest) {
-    schema.properties.latest = {
-      required: true,
-      type: 'string',
-      pattern: '^(true|false|invalid)$'
-    };
-    console.log(chalk.yellow("Latest: true/false/invalid."));
-  }
-  if (!options.disableEnv && typeof (environment) == "undefined") {
-    schema.properties.environment = {
-      required: true,
-      type: 'integer',
-      message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod, 4 = localhost:3001'
-    };
-    console.log("For environment, enter a number: " + chalk.yellow("0 = dev") + ", " + chalk.magenta("1 = QA") + ", " + chalk.magenta("2 = QA2") + ", " + chalk.green("3 = stg") + ", " + chalk.blue("4 = prod") + ", " + "5 = localhost:3001");
-  }
-
-  prompt.start();
-  prompt.get(schema, function (err, result) {
-    if (!err) {
+      prompt.start();
+      const result = await prompt.get(schema);
       result.username = result.username || username;
       result.password = result.password || password;
       result.notes = result.notes || notes;
-
+    
       if (result.username.indexOf('@') == -1) {
         result.username = result.username.trim() + '@aws.foreseeresults.com';
       }
@@ -1319,19 +180,757 @@ FCPClient.promptForFCPCredentials = function (options, cb) {
         result.latest = true;
       }
       result.env = result.environment;
-
+    
       if (result.env >= 0 && result.env <= 5) {
         // dev, qa, qa2, stg, prod, local
-        const es = FCPClient.environmentShort[result.env];
-        result.environment = FCPClient.environments[es];
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments[es];
+        const shorty = FCPClient.environmentShort[result.env];
+        result.fcpUrl = FCPClient.fcpUrls[shorty];
+        result.gatewayUrl = FCPClient.gatewayUrls[shorty];
       } else if (!options.disableEnv) {
         throw new Error("Invalid environment.");
       }
-      cb(result);
+      return result;
+    } catch (e) {
     }
-  });
-};
+  };
 
-// Tell the world
-module.exports = FCPClient;
+  /**
+   * Return the provided string trimmed and in lower case
+   * @param {String} string 
+   * @private
+   */
+  __LCTrim (string) {
+    return string.toLowerCase().trim();
+  };
+
+  /**
+   * Format string (ex. notes)
+   * @param {String} string
+   * @param {Number} maxLength
+   * @private
+   */
+  __formatStringField (string, maxLength) {
+    maxLength = maxLength || 45000;
+    string = string || '';
+    string = string.replace(/:/g, ' ').replace(/\/\//g, '').replace(/\//g, ' ').replace(/\./g, ' ');
+    string = string.replace(/[^0-9a-zA-Z ]*/g, '');
+    string = string.trim();
+    if (string.length === 0) {
+      string = "No notes provided (__formatStringField fcp-client)";
+    }
+    if (string.length > maxLength) {
+      string = string.substr(0, maxLength);
+    }
+    return string;
+  };
+
+  /**
+   * Return a fully qualified URL for an endpoint
+   * @param {String} endpoint
+   * @private
+   */
+  __constructEndpointURL (endpoint) {
+    if (endpoint.substr(0, 1) == "/") {
+      endpoint = endpoint.substr(1);
+    }
+    return this.hostname + "/" + endpoint;
+  };
+
+  /**
+   * Log an event
+   * @private
+   */
+  __logEvent () {
+    let string = "";
+    [...arguments].forEach(arg => {
+      try {
+        string += JSON.stringify(arg, (element, value) => {
+          return typeof value === typeof {} && value.type && value.type === "Buffer" ? "[BUF]" : value;
+        })
+      } catch (e) {}
+      string += ' ';
+    });
+    string = string.slice(0,-1);
+    this._log.push(string);
+  };
+
+
+
+  // CLIENTS
+
+  /**
+   * Create a client
+   * @param {Number} id Client ID
+   * @param {String} name Client name
+   * @param {String} metadata Meta data
+   * @param {String} notes Notes
+   */
+  async createClient (id, name, metadata, notes) {
+    const data = {
+      client_id: id,
+      name: this.__formatStringField(name, 127),
+      metadata: this.__formatStringField(metadata),
+      notes: this.__formatStringField(notes),
+    };
+    // if (isNaN(data.client_id)) {
+    //   console.log('nan')
+    //   throw new Error("Client ID needs to be a number.");
+    // }
+    // if (data.name.length === 0) {
+    //   console.log('name')
+    //   throw new Error("Missing name field on create client request.");
+    // }
+    // if (data.metadata.length === 0) {
+    //   console.log('metadata')
+    //   throw new Error("Missing metadata field on create client request.");
+    // }
+    // if (data.notes.length === 0) {
+    //   console.log('notes')
+    //   throw new Error("Missing notes field on create client request.");
+    // }
+    const postUrl = this.__constructEndpointURL('clients');
+    const body = { ...this.credentials, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * List the clients
+   * @param {Array} searchterms
+   */
+  async listClients (searchTerms) {
+    const queryString = searchTerms && searchTerms.length > 0 ? `?=${encodeURIComponent(searchTerms.join())}` : '';
+    const getUrl = this._constructEndpointURL('clients'+queryString);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Look up a client by its ID
+   * @param {Number} id
+   */
+  async getClient (id) {
+    const getUrl = this._constructEndpointURL(`clients/${id}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+
+  // /** Hey man, What the heck is this? I don't see it in the app.js file of fcp...
+  //  * Reset a client
+  //  * @param callback {Function} Callback
+  //  */
+  // FCPClient.prototype.reset = function (callback) {
+  //   const postUrl = this._constructEndpointURL('reset/');
+  //   this._logEvent("POST", postUrl);
+  //   rest.post(postUrl, {
+  //     username: this.username,
+  //     password: this.password
+  //   }).on('complete', function (data) {
+  //     console.log("Reset result: ", data);
+  //     callback(data.statusCode == 200, !!data ? data.message : null);
+  //   });
+  // };
+
+
+
+  // SITES
+
+  /**
+   * Create a site
+   * @param {Number} id The client ID
+   * @param {String} name The site key
+   * @param {String} notes Notes
+   * @param {String} alias - optional
+   */
+  async createSite (id, name, notes, alias) {
+    const data = {
+      client_id: id,
+      name: this.__LCTrim(name.replace(/ /g, '')),
+      notes: this.__formatStringField(notes)
+    };
+    if(alias) data.alias = alias;
+    const postUrl = this._constructEndpointURL('sites');
+    const body = { ...this.credentials, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * List the sites
+   * @param {Number} clientId - optional, limits list results to only be sites from this client
+   * @param {Boolean} deleted - optional, when true list results will include deleted sites
+   */
+  async listSites (clientId, deleted) {
+    const clientString = encodeURIComponent(clientId) || '';
+    const deletedString = deleted === true ? encodeURIComponent('deleted=true') : '';
+    const queryString = `?=${clientString}&&${deletedString}`;
+    const getUrl = this._constructEndpointURL('clients'+queryString);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Look up a site by its key
+   * @param {String} name
+   */
+  async getSite (name) {
+    const getUrl = this._constructEndpointURL(`sites/${name}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+
+
+  // CONTAINERS
+
+  /**
+   * Create a container
+   * @param {String} sitekey The site key
+   * @param {String} name The container
+   * @param {String} notes Notes
+   */
+  async createContainer (sitekey, name, notes) {
+    const data = {
+      name: this.__LCTrim(name.substr(0, 45).replace(/[ \t\r\n]/g, '')),
+      notes: this.__formatStringField(notes)
+    };
+    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers`);
+    const body = { ...this.credentials, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * List the containers
+   * @param {String} sitekey The site key
+   */
+  async listContainers (sitekey) {
+    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Look up a site by its key
+   * @param {String} sitekey The site key
+   * @param {String} name
+   */
+  async getContainer (sitekey, name) {
+    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${name}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+
+
+  // CONTAINER CONFIGS
+
+  /**
+   * Post a new container configuration for a particular sitekey and container
+   * @param {String} sitekey The site key
+   * @param {String} container The container name
+   * @param {String} notes
+   * @param {String} configStr JavaScript configuration snippet file contents
+   * @param {String} vendorCode
+   */
+  async pushContainerConfig (sitekey, container, notes, configStr, vendorCode) {
+    const data = {
+      notes: this.__formatStringField(notes),
+      config: rest.data("config.js", "application/javascript", new Buffer(configStr)),
+      vendor_code: this.__LCTrim(vendorCode)
+    };
+    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/configs`);
+    const body = { ...this.credentials, multipart: true, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * List the container configs for a particular sitekey and container
+   * @param {String} sitekey The site key
+   * @param {String} container The container name
+   * @param {Boolean} deleted - optional, when true list results will include deleted sites
+   * @param {Boolean} active - optional, when true list results will include active sites
+   * @param {String} vendorCode
+   */
+  async listContainerConfigs (sitekey, container, deleted, active, vendorCode) {
+    const deletedString = deleted === true ? encodeURIComponent('deleted=true') : '';
+    const activeString = active === true ? encodeURIComponent('active=true') : '';
+    const vendorString = vendorCode ? `vendor_code=${encodeURIComponent(vendorCode)}` : '';
+    const queryString = `?=${deletedString}&&${activeString}&&${vendorString}`;
+    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/configs${queryString}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Look up a container config for a particular sitekey and container by its tag
+   * @param {String} sitekey The site key
+   * @param {String} container The container name
+   * @param {String} tag
+   */
+  async getContainerConfigContents (sitekey, container, tag) {
+    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/configs/files/${tag}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Set current container config tag for a particular sitekey and container equal to a prior tag
+   * @param {String} sitekey The site key
+   * @param {String} container The container name
+   * @param {String} tag
+   * @param {String} notes
+   * @param {String} vendorCode
+   */
+  async setContainerConfigToTag (sitekey, container, tag, notes, vendorCode) {
+    const data = {
+      notes: this.__formatStringField(notes),
+      vendor_code: this.__LCTrim(vendorCode)
+    };
+    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/configs/${tag}`);
+    const body = { ...this.credentials, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+
+
+  // PRODUCT CONFIGS
+
+  /**
+   * Post a new product configuration for a particular sitekey and container
+   * @param {String} sitekey The site key
+   * @param {String} container The container name
+   * @param {String} name
+   * @param {String} notes
+   * @param {String} configStr JavaScript configuration snippet file contents
+   * @param {String} vendorCode
+   * @param {String} jsonStr - optional, JSON version of the configuration snippet file contents
+   * @param {Buffer} fileBuf - optional, contents of the ZIP containing all files
+   */
+  async pushProductConfig (sitekey, container, name, notes, configStr, vendorCode, jsonStr, fileBuf) {
+    const data = {
+      notes: this.__formatStringField(notes),
+      config: rest.data("config.js", "application/javascript", new Buffer(configStr)),
+      vendor_code: this.__LCTrim(vendorCode)
+    };
+    if (jsonStr) {
+      data.json = rest.data("config.json", "application/json", new Buffer(jsonStr));
+    }
+    if (fileBuf) {
+      data.file = rest.data("files.zip", "application/octet-stream", fileBuf);
+    }
+    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/products/${this.__LCTrim(name)}`);
+    const body = { ...this.credentials, multipart: true, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * List the product configs for a particular sitekey and container
+   * @param {String} sitekey The site key
+   * @param {String} container The container name
+   * @param {Boolean} deleted - optional, when true list results will include deleted sites
+   * @param {Boolean} inactive - optional, when true list results will include inactive sites
+   */
+  async listProductConfigs (sitekey, container, deleted, inactive) {
+    const deletedString = deleted === true ? encodeURIComponent('deleted=true') : '';
+    const inactiveString = inactive === true ? encodeURIComponent('inactive=true') : '';
+    const queryString = `?=${deletedString}&&${inactiveString}`;
+    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/products${queryString}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Set current product config tag for a particular sitekey and container equal to a prior tag
+   * @param {String} sitekey The site key
+   * @param {String} container The container name
+   * @param {String} name
+   * @param {String} tag
+   * @param {String} notes
+   */
+  async setProductConfigToTag (sitekey, container, name, tag, notes) {
+    const data = {
+      notes: this.__formatStringField(notes)
+    };
+    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/products/${name}/${tag}`);
+    const body = { ...this.credentials, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+
+
+  // DEFAULT CONFIG
+
+  /**
+   * Post a new default configuration
+   * @param {String} configStr JavaScript configuration snippet file contents
+   * @param {String} vendorCode
+   */
+  async pushDefaultConfig (configStr, vendorCode) {
+    const data = {
+      config: rest.data("config.js", "application/octet-stream", new Buffer(configStr)),
+      vendor_code: this.__LCTrim(vendorCode)
+    };
+    const postUrl = this._constructEndpointURL(`defaultconfig`);
+    const body = { ...this.credentials, multipart: true, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Get the default configs for a particular sitekey and container
+   * @param {String} vendorCode
+   */
+  async getDefaultConfig (vendorCode) {
+    const vendorString = vendorCode ? `?=vendor_code=${encodeURIComponent(vendorCode)}` : '';
+    const getUrl = this._constructEndpointURL(`defaultconfig${vendorString}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+
+
+  // CODE
+
+  /**
+   * Create a code version
+   * @param {Buffer} codeBuf contents of the ZIP containing all files
+   * @param {String} notes Notes
+   * @param {String} version Semver
+   * @param {Boolean} latest - optional, when true then 'latest' will point to this version now
+   * @param {Boolean} invalid - optional, when true then this version won't be considered 'valid' by cx suite
+   */
+  async createCode (codeBuf, notes, version, latest, invalid) {
+    const data = {
+      code: rest.data("code.zip", "application/octet-stream", codeBuf),
+      notes: this.__formatStringField(notes),
+      version
+    };
+    if (latest === true) data.latest = true;
+    if (invalid === true) data.invalid = true;
+    const postUrl = this.__constructEndpointURL('code');
+    const body = { ...this.credentials, multipart: true, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * List code files
+   * @param {Boolean} duplicates - optional, when true list overwritten results
+   * @param {Boolean} latest - optional, when true list only the version marked 'latest'
+   */
+  async listCodes (duplicates, latest) {
+    const duplicatesString = duplicates === true ? encodeURIComponent('duplicates=true') : '';
+    const latestString = latest === true ? encodeURIComponent('latest=true') : '';
+    const queryString = `?=${duplicatesString}&&${latestString}`;
+    const getUrl = this._constructEndpointURL(`code${queryString}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Look up a code by its id
+   * @param {String} id
+   */
+  async getCodeContents (id) {
+    const getUrl = this._constructEndpointURL(`code/files/${id}`);
+    this._logEvent("GET", getUrl);
+    try {
+      const result = await getter(getUrl, this.credentials);
+      const zip = new jsZip(result, {createFolders: true, checkCRC32: true});
+      const files = Object.values(zip.files).map(function(file) {
+        return {
+          folder: file.dir,
+          name: file.name,
+          buffer: file.dir ? null : file.asNodeBuffer(),
+        };
+      });
+      return files;
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Set code as the 'latest'
+   * @param {String} id
+   */
+  async setCodeToLatest (id) {
+    const postUrl = this._constructEndpointURL(`code/${id}/latest`);
+    const body = { ...this.credentials };
+    this.__logEvent("POST", postUrl);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Set code to invalid
+   * @param {String} id
+   */
+  async setCodeToInvalid (id) {
+    const postUrl = this._constructEndpointURL(`code/${id}/invalid`);
+    const body = { ...this.credentials };
+    this.__logEvent("POST", postUrl);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+
+
+  // MODULES
+
+  /**
+   * Create a module version
+   * @param {Buffer} moduleBuf contents of the ZIP containing all files
+   * @param {String} name
+   * @param {String} version Semver
+   * @param {String} notes Notes
+   */
+  async createModule (moduleBuf, name, version, notes) {
+    const data = {
+      module: rest.data("module.zip", "application/octet-stream", moduleBuf),
+      module_name: this.__LCTrim(name),
+      version,
+      notes: this.__formatStringField(notes),
+    };
+    const postUrl = this.__constructEndpointURL('modules');
+    const body = { ...this.credentials, multipart: true, data };
+    this.__logEvent("POST", postUrl, data);
+    try {
+      return await poster(postUrl, body);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * List module files
+   * @param {String} name - optional, when provided list only modules with this name
+   * @param {String} vendorCode - optional, when provided list only modules with this vendor code
+   * @param {String} version Semver - optional, Semver, when provided list only modules with this version
+   */
+  async listModules (name, vendorCode, version) {
+    const nameString = name ? encodeURIComponent(`module_name=${this.__LCTrim(name)}`) : '';
+    const vendorCodeString = vendorCode ? encodeURIComponent(`vendor_code=${this.__LCTrim(vendorCode)}`) : '';
+    const versionString = version ? encodeURIComponent(`version=${this.__LCTrim(version)}`) : '';
+    const queryString = `?=${nameString}&&${vendorCodeString}&&${versionString}`;
+    const getUrl = this._constructEndpointURL(`code${queryString}`);
+    this._logEvent("GET", getUrl);
+    try {
+      return await getter(getUrl, this.credentials);
+    } catch (err) {
+      return err;
+    }
+  };
+
+  /**
+   * Look up a module by its md5
+   * @param {String} md5
+   */
+  async getModuleContents (md5) {
+    const getUrl = this._constructEndpointURL(`modules/files/${md5}`);
+    this._logEvent("GET", getUrl);
+    try {
+      const result = await getter(getUrl, this.credentials);
+      const zip = new jsZip(result, {createFolders: true, checkCRC32: true});
+      const files = Object.values(zip.files).map(function(file) {
+        return {
+          folder: file.dir,
+          name: file.name,
+          buffer: file.dir ? null : file.asNodeBuffer(),
+        };
+      });
+      return files;
+    } catch (err) {
+      return err;
+    }
+  };
+
+
+
+
+// /**
+//  * Post new config JS files
+//  * @param uniminifiedJSStr {String} String containing the unminified JS file
+//  * @param minifiedJSStr {String} String containing the minified JS file
+//  * @param notes {String} Comments on this release
+//  * @param callback {Function} Callback
+//  */
+// FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
+//   callback = callback || function () { };
+
+//   if (!uniminifiedJSStr) {
+//     throw new Error("Missing unminified JS file.");
+//   }
+//   if (!minifiedJSStr) {
+//     throw new Error("Missing minified JS file.");
+//   }
+//   if (!notes) {
+//     throw new Error("Missing notes.");
+//   }
+//   if (minifiedJSStr.length >= uniminifiedJSStr) {
+//     throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
+//   }
+//   const zip = new jsZip();
+//   zip.file('gatewayconfig.js', uniminifiedJSStr);
+//   zip.file('gatewayconfig.min.js', minifiedJSStr);
+//   const data = zip.generate({ base64: false, compression: 'DEFLATE' });
+//   const dobj = {
+//     'notes': this._formatStringField(notes),
+//     'config': rest.data("config.zip", "application/octet-stream", data)
+//   };
+
+//   const postUrl = this._constructEndpointURL('gatewayconfig');
+
+//   this._logEvent("POST", postUrl, dobj);
+
+//   rest.post(postUrl, {
+//     multipart: true,
+//     username: this.username,
+//     password: this.password,
+//     data: dobj
+//   }).on('complete', function (data) {
+//     callback(data.statusCode == 200);
+//   });
+// };
+
+// /**
+//  * Get publishers info for a site key
+//  * @param sitekey {String} site key
+//  * @param callback {Function}
+//  */
+// FCPClient.prototype.getPublishersForSitekey = function (sitekey, callback) {
+//   callback = callback || function () { };
+//   sitekey = sitekey || '';
+//   sitekey = sitekey.toLowerCase().trim();
+
+//   const URL = this._constructEndpointURL(`/sites/${sitekey}/publishers/`);
+
+//   this._logEvent("GET", URL);
+//   rest.get(URL, {
+//     username: this.username,
+//     password: this.password
+//   }).on('complete', function (data) {
+//     callback(data.statusCode == 200, !!data ? data.message : null);
+//   });
+// };
+
+// /**
+//  * Remove a publisher for a site key
+//  * @param sitekey {String} site key
+//  * @param publisherId {String} publisher id to remove
+//  * @param callback {Function}
+//  */
+// FCPClient.prototype.removePublisherForSitekey = function (sitekey, publisherId, callback) {
+//   callback = callback || function () { };
+//   sitekey = sitekey || '';
+//   sitekey = sitekey.toLowerCase().trim();
+//   try {
+//     publisherId = parseInt(publisherId);
+//   } catch (ex) {
+//     publisherId = null;
+//   }
+
+//   const URL = this._constructEndpointURL(`/sites/${sitekey}/publishers/${publisherId}`);
+
+//   this._logEvent("DELETE", URL);
+//   rest.del(URL, {
+//     username: this.username,
+//     password: this.password
+//   }).on('complete', function (data) {
+//     callback(data.statusCode == 200, !!data ? data.message : null);
+//   });
+// };
+
+}

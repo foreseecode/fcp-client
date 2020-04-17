@@ -1,6 +1,6 @@
 {
   "name": "fcp-client",
-  "version": "0.1.1",
+  "version": "0.2",
   "description": "Node interface for FCP API",
   "main": "index.js",
   "scripts": {
@@ -23,7 +23,7 @@
     "async": "*",
     "chalk": "*",
     "node-zip": "1.1.1",
-    "prompt": "^1.0.0",
+    "prompt-async": "*",
     "restler": "3.4.0",
     "semver": "*"
   }
