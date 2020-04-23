@@ -9,29 +9,13 @@ const { promisify } = require("util");
 
 const restlerOnComplete = data => data.statusCode != 200 ? data : false;
 
-const restlerGet = (url, options, callback) => {
-  rest.get(url, options).on('complete', data => {
+const restlerCall = (httpType, url, options, callback) => {
+  rest[httpType.toLowerCase()](url, options).on('complete', data => {
     callback(restlerOnComplete(data),data);
   });
 };
 
-const restlerPost = (url, options, callback) => {
-  rest.post(url, options).on('complete', data => {
-    callback(restlerOnComplete(data),data);
-  });
-};
-
-const restlerDelete = (url, options, callback) => {
-  rest.del(url, options).on('complete', data => {
-    callback(restlerOnComplete(data),data);
-  });
-};
-
-const getter = async (url, options) => await promisify(restlerGet)(url, options);
-
-const poster = async (url, options) => await promisify(restlerPost)(url, options);
-
-const deleter = async (url, options) => await promisify(restlerDelete)(url, options);
+const restler = async (httpType, url, options) => await promisify(restlerCall)(httpType, url, options);
 
 /**
  * Initialize a new instance of FCP Client
@@ -61,7 +45,7 @@ module.exports = class FCPClient {
       password
     };
     this.hostname = hostname;
-    this._log = [];
+    this.__log = [];
   };
 
   static get environmentShort() { return ["dev", "qa", "qa2", "stg", "prod", "local"]; };
@@ -97,62 +81,132 @@ module.exports = class FCPClient {
    *  - {String} notes
    *  - {Number} environment - 0 = dev, 1 = QA, 2 = QA2, 3 = stg, 4 = prod, 5 = local
    *  - {Boolean} disableEnv - If you want to not require an environment
+   *  - {Number} clientId
+   *  - {Boolean} requireCID - If you want to make sure you have a client id
+   *  - {String} sitekey
+   *  - {Boolean} requireSite - If you want to make sure you have a sitekey
+   *  - {String} container
+   *  - {Boolean} requireCont - If you want to make sure you have a container
+   *  - {String} name
+   *  - {Boolean} requireName - If you want to make sure you have a name
+   *  - {String} metadata
+   *  - {Boolean} requireMData - If you want to make sure you have metadata
+   *  - {String} configTag
+   *  - {Boolean} requireCTag - If you want to make sure you have config tag
+   *  - {String} vendorCode
+   *  - {Boolean} requireVend - If you want to make sure you have a vendor code
+   *  - {String} prereleaseCode
+   *  - {Boolean} requirePrel - If you want to make sure you have a prerelease code
    *  - {true/false/invalid} latest - If you want to pass that value on
+   * As well as any other values you just want to pass on and will be ignored
    */
   static async promptForFCPCredentials (options) {
     options = options || {};
-    let { username, password, notes, environment } = options;
     let home;
     let ev;
     const schema = {
       properties: {}
     };
 
-    if(environment && isNaN(environment)) {
-      environment = FCPClient.environmentShort.indexOf(environment);
+    if(!options.environment) options.environment = options.env;
+
+    if(options.environment && isNaN(options.environment)) {
+      options.environment = FCPClient.environmentShort.indexOf(options.environment);
     }
-    if(environment && (environment > 5 || environment < 0)) {
-      environment = undefined;
+    if(options.environment && (options.environment > 5 || options.environment < 0)) {
+      options.environment = undefined;
     }
-    if(environment) options.disableEnv = true;
+    if(options.environment) options.disableEnv = true;
   
     // Read FCP credentials from passed in, ~/env.json or environment variables, if any exist
     try {
       home = process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'];
       ev = await JSON.parse(fs.readFileSync(home + '/env.json').toString());
-      username = username || ev.FCP_USERNAME || process.env.FCP_USERNAME;
-      password = password || ev.FCP_PASSWORD || process.env.FCP_PASSWORD;
-      notes = notes || ev.FCP_NOTES || process.env.FCP_NOTES;
-      environment = environment || ev.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
+      options.username = options.username || ev.FCP_USERNAME || process.env.FCP_USERNAME;
+      options.password = options.password || ev.FCP_PASSWORD || process.env.FCP_PASSWORD;
+      options.notes = options.notes || ev.FCP_NOTES || process.env.FCP_NOTES;
+      options.environment = options.environment || ev.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     } catch (e) {
     }
 
-    if (!username || !password) {
+    if (!options.username || !options.password) {
       console.log(chalk.cyan("Please enter your FCP credentials (no @ is needed). "));
     }
-    if (!username) {
+    if (!options.username) {
       schema.properties.username = {
         required: true
       };
     }
-    if (!password) {
+    if (!options.password) {
       schema.properties.password = {
         hidden: true,
         required: true
       }
     }
-    if (!notes) {
+    if (!options.notes && !options.disableNotes) {
       schema.properties.notes = {
         required: true
       };
     }
-    if (!options.disableEnv && typeof (environment) == "undefined") {
+    if (!options.disableEnv && typeof (options.environment) == "undefined") {
       schema.properties.environment = {
         required: true,
         type: 'integer',
         message: '0 = dev, 1 = QA, 2 = QA2, 3 = stg, 4 = prod, 5 = localhost:3001'
       };
       console.log("For environment, enter a number: " + chalk.yellow("0 = dev") + ", " + chalk.magenta("1 = QA") + ", " + chalk.magenta("2 = QA2") + ", " + chalk.green("3 = stg") + ", " + chalk.blue("4 = prod") + ", " + "5 = localhost:3001");
+    }
+    if (options.requireCID && !options.clientId) {
+      schema.properties.clientId = {
+        required: true,
+        type: 'integer',
+        message: chalk.yellow("Client ID should be a non-zero integer."),
+      }
+    }
+    if (options.requireSite && !options.sitekey) {
+      schema.properties.sitekey = {
+        required: true,
+        type: "string",
+      };
+    }
+    if (options.requireCont && !options.container) {
+      schema.properties.container = {
+        required: true,
+        type: "string",
+      };
+    }
+    if (options.requireName && !options.name) {
+      schema.properties.name = {
+        required: true,
+        type: "string",
+      };
+    }
+    if (options.requireMData && !options.metadata) {
+      schema.properties.metadata = {
+        required: true,
+        type: "string",
+        message: "Metadata can be the website URL, client contact name, other trademarks, etc. This is useful for searching.",
+      };
+    }
+    if (options.requireCTag && !options.configTag) {
+      schema.properties.configTag = {
+        required: true,
+        type: "string"
+      };
+    }
+    if (options.requireVend && !options.vendorCode) {
+      schema.properties.vendorCode = {
+        required: true,
+        type: "string",
+        message: "8 char limit, accepted chars A-Z/a-z"
+      };
+    }
+    if (options.requirePrel && !options.prereleaseCode) {
+      schema.properties.prereleaseCode = {
+        required: true,
+        type: "string",
+        message: "8 char limit, accepted chars A-Z/a-z"
+      };
     }
     if (options.latest) {
       schema.properties.latest = {
@@ -164,32 +218,24 @@ module.exports = class FCPClient {
     }
   
     try {
-      prompt.start();
+      await prompt.start();
       const result = await prompt.get(schema);
-      result.username = result.username || username;
-      result.password = result.password || password;
-      result.notes = result.notes || notes;
+      Object.assign(options, result);
     
-      if (result.username.indexOf('@') == -1) {
-        result.username = result.username.trim() + '@aws.foreseeresults.com';
+      if (options.username.indexOf('@') == -1) {
+        options.username = options.username.trim() + '@aws.foreseeresults.com';
       }
-      if (typeof (environment) != "undefined") {
-        result.environment = environment;
-      }
-      if (typeof (result.latest) == "undefined") {
-        result.latest = true;
-      }
-      result.env = result.environment;
+      options.env = options.environment;
     
-      if (result.env >= 0 && result.env <= 5) {
+      if (options.env >= 0 && options.env <= 5) {
         // dev, qa, qa2, stg, prod, local
-        const shorty = FCPClient.environmentShort[result.env];
-        result.fcpUrl = FCPClient.fcpUrls[shorty];
-        result.gatewayUrl = FCPClient.gatewayUrls[shorty];
+        const shorty = FCPClient.environmentShort[options.env];
+        options.fcpUrl = FCPClient.fcpUrls[shorty];
+        options.gatewayUrl = FCPClient.gatewayUrls[shorty];
       } else if (!options.disableEnv) {
         throw new Error("Invalid environment.");
       }
-      return result;
+      return options;
     } catch (e) {
     }
   };
@@ -251,7 +297,7 @@ module.exports = class FCPClient {
       string += ' ';
     });
     string = string.slice(0,-1);
-    this._log.push(string);
+    this.__log.push(string);
   };
 
 
@@ -292,7 +338,7 @@ module.exports = class FCPClient {
     const body = { ...this.credentials, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -303,11 +349,11 @@ module.exports = class FCPClient {
    * @param {Array} searchterms
    */
   async listClients (searchTerms) {
-    const queryString = searchTerms && searchTerms.length > 0 ? `?=${encodeURIComponent(searchTerms.join())}` : '';
-    const getUrl = this._constructEndpointURL('clients'+queryString);
-    this._logEvent("GET", getUrl);
+    const queryString = searchTerms && searchTerms.length > 0 ? `?search=${encodeURIComponent(searchTerms.join())}` : '';
+    const getUrl = this.__constructEndpointURL('clients'+queryString);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -318,10 +364,10 @@ module.exports = class FCPClient {
    * @param {Number} id
    */
   async getClient (id) {
-    const getUrl = this._constructEndpointURL(`clients/${id}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`clients/${id}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -333,8 +379,8 @@ module.exports = class FCPClient {
   //  * @param callback {Function} Callback
   //  */
   // FCPClient.prototype.reset = function (callback) {
-  //   const postUrl = this._constructEndpointURL('reset/');
-  //   this._logEvent("POST", postUrl);
+  //   const postUrl = this.__constructEndpointURL('reset/');
+  //   this.__logEvent("POST", postUrl);
   //   rest.post(postUrl, {
   //     username: this.username,
   //     password: this.password
@@ -362,11 +408,11 @@ module.exports = class FCPClient {
       notes: this.__formatStringField(notes)
     };
     if(alias) data.alias = alias;
-    const postUrl = this._constructEndpointURL('sites');
+    const postUrl = this.__constructEndpointURL('sites');
     const body = { ...this.credentials, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -381,10 +427,10 @@ module.exports = class FCPClient {
     const clientString = encodeURIComponent(clientId) || '';
     const deletedString = deleted === true ? encodeURIComponent('deleted=true') : '';
     const queryString = `?=${clientString}&&${deletedString}`;
-    const getUrl = this._constructEndpointURL('clients'+queryString);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL('sites'+queryString);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -395,10 +441,10 @@ module.exports = class FCPClient {
    * @param {String} name
    */
   async getSite (name) {
-    const getUrl = this._constructEndpointURL(`sites/${name}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`sites/${name}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -419,11 +465,11 @@ module.exports = class FCPClient {
       name: this.__LCTrim(name.substr(0, 45).replace(/[ \t\r\n]/g, '')),
       notes: this.__formatStringField(notes)
     };
-    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers`);
+    const postUrl = this.__constructEndpointURL(`sites/${sitekey}/containers`);
     const body = { ...this.credentials, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -434,10 +480,10 @@ module.exports = class FCPClient {
    * @param {String} sitekey The site key
    */
   async listContainers (sitekey) {
-    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`sites/${sitekey}/containers`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -449,10 +495,10 @@ module.exports = class FCPClient {
    * @param {String} name
    */
   async getContainer (sitekey, name) {
-    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${name}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`sites/${sitekey}/containers/${name}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -476,11 +522,11 @@ module.exports = class FCPClient {
       config: rest.data("config.js", "application/javascript", new Buffer(configStr)),
       vendor_code: this.__LCTrim(vendorCode)
     };
-    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/configs`);
+    const postUrl = this.__constructEndpointURL(`sites/${sitekey}/containers/${container}/configs`);
     const body = { ...this.credentials, multipart: true, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -499,10 +545,10 @@ module.exports = class FCPClient {
     const activeString = active === true ? encodeURIComponent('active=true') : '';
     const vendorString = vendorCode ? `vendor_code=${encodeURIComponent(vendorCode)}` : '';
     const queryString = `?=${deletedString}&&${activeString}&&${vendorString}`;
-    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/configs${queryString}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`sites/${sitekey}/containers/${container}/configs${queryString}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -515,10 +561,10 @@ module.exports = class FCPClient {
    * @param {String} tag
    */
   async getContainerConfigContents (sitekey, container, tag) {
-    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/configs/files/${tag}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`sites/${sitekey}/containers/${container}/configs/files/${tag}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -537,11 +583,11 @@ module.exports = class FCPClient {
       notes: this.__formatStringField(notes),
       vendor_code: this.__LCTrim(vendorCode)
     };
-    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/configs/${tag}`);
+    const postUrl = this.__constructEndpointURL(`sites/${sitekey}/containers/${container}/configs/${tag}`);
     const body = { ...this.credentials, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -574,11 +620,11 @@ module.exports = class FCPClient {
     if (fileBuf) {
       data.file = rest.data("files.zip", "application/octet-stream", fileBuf);
     }
-    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/products/${this.__LCTrim(name)}`);
+    const postUrl = this.__constructEndpointURL(`sites/${sitekey}/containers/${container}/products/${this.__LCTrim(name)}`);
     const body = { ...this.credentials, multipart: true, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -595,10 +641,10 @@ module.exports = class FCPClient {
     const deletedString = deleted === true ? encodeURIComponent('deleted=true') : '';
     const inactiveString = inactive === true ? encodeURIComponent('inactive=true') : '';
     const queryString = `?=${deletedString}&&${inactiveString}`;
-    const getUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/products${queryString}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`sites/${sitekey}/containers/${container}/products${queryString}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -616,11 +662,11 @@ module.exports = class FCPClient {
     const data = {
       notes: this.__formatStringField(notes)
     };
-    const postUrl = this._constructEndpointURL(`sites/${sitekey}/containers/${container}/products/${name}/${tag}`);
+    const postUrl = this.__constructEndpointURL(`sites/${sitekey}/containers/${container}/products/${name}/${tag}`);
     const body = { ...this.credentials, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -640,11 +686,11 @@ module.exports = class FCPClient {
       config: rest.data("config.js", "application/octet-stream", new Buffer(configStr)),
       vendor_code: this.__LCTrim(vendorCode)
     };
-    const postUrl = this._constructEndpointURL(`defaultconfig`);
+    const postUrl = this.__constructEndpointURL(`defaultconfig`);
     const body = { ...this.credentials, multipart: true, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -656,10 +702,10 @@ module.exports = class FCPClient {
    */
   async getDefaultConfig (vendorCode) {
     const vendorString = vendorCode ? `?=vendor_code=${encodeURIComponent(vendorCode)}` : '';
-    const getUrl = this._constructEndpointURL(`defaultconfig${vendorString}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`defaultconfig${vendorString}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -689,7 +735,7 @@ module.exports = class FCPClient {
     const body = { ...this.credentials, multipart: true, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -704,10 +750,10 @@ module.exports = class FCPClient {
     const duplicatesString = duplicates === true ? encodeURIComponent('duplicates=true') : '';
     const latestString = latest === true ? encodeURIComponent('latest=true') : '';
     const queryString = `?=${duplicatesString}&&${latestString}`;
-    const getUrl = this._constructEndpointURL(`code${queryString}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`code${queryString}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -718,10 +764,10 @@ module.exports = class FCPClient {
    * @param {String} id
    */
   async getCodeContents (id) {
-    const getUrl = this._constructEndpointURL(`code/files/${id}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`code/files/${id}`);
+    this.__logEvent("GET", getUrl);
     try {
-      const result = await getter(getUrl, this.credentials);
+      const result = await restler("GET", getUrl, this.credentials);
       const zip = new jsZip(result, {createFolders: true, checkCRC32: true});
       const files = Object.values(zip.files).map(function(file) {
         return {
@@ -741,11 +787,11 @@ module.exports = class FCPClient {
    * @param {String} id
    */
   async setCodeToLatest (id) {
-    const postUrl = this._constructEndpointURL(`code/${id}/latest`);
+    const postUrl = this.__constructEndpointURL(`code/${id}/latest`);
     const body = { ...this.credentials };
     this.__logEvent("POST", postUrl);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -756,11 +802,11 @@ module.exports = class FCPClient {
    * @param {String} id
    */
   async setCodeToInvalid (id) {
-    const postUrl = this._constructEndpointURL(`code/${id}/invalid`);
+    const postUrl = this.__constructEndpointURL(`code/${id}/invalid`);
     const body = { ...this.credentials };
     this.__logEvent("POST", postUrl);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -788,7 +834,7 @@ module.exports = class FCPClient {
     const body = { ...this.credentials, multipart: true, data };
     this.__logEvent("POST", postUrl, data);
     try {
-      return await poster(postUrl, body);
+      return await restler("POST", postUrl, body);
     } catch (err) {
       return err;
     }
@@ -805,10 +851,10 @@ module.exports = class FCPClient {
     const vendorCodeString = vendorCode ? encodeURIComponent(`vendor_code=${this.__LCTrim(vendorCode)}`) : '';
     const versionString = version ? encodeURIComponent(`version=${this.__LCTrim(version)}`) : '';
     const queryString = `?=${nameString}&&${vendorCodeString}&&${versionString}`;
-    const getUrl = this._constructEndpointURL(`code${queryString}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`code${queryString}`);
+    this.__logEvent("GET", getUrl);
     try {
-      return await getter(getUrl, this.credentials);
+      return await restler("GET", getUrl, this.credentials);
     } catch (err) {
       return err;
     }
@@ -819,10 +865,10 @@ module.exports = class FCPClient {
    * @param {String} md5
    */
   async getModuleContents (md5) {
-    const getUrl = this._constructEndpointURL(`modules/files/${md5}`);
-    this._logEvent("GET", getUrl);
+    const getUrl = this.__constructEndpointURL(`modules/files/${md5}`);
+    this.__logEvent("GET", getUrl);
     try {
-      const result = await getter(getUrl, this.credentials);
+      const result = await restler("GET", getUrl, this.credentials);
       const zip = new jsZip(result, {createFolders: true, checkCRC32: true});
       const files = Object.values(zip.files).map(function(file) {
         return {
@@ -867,13 +913,13 @@ module.exports = class FCPClient {
 //   zip.file('gatewayconfig.min.js', minifiedJSStr);
 //   const data = zip.generate({ base64: false, compression: 'DEFLATE' });
 //   const dobj = {
-//     'notes': this._formatStringField(notes),
+//     'notes': this.__formatStringField(notes),
 //     'config': rest.data("config.zip", "application/octet-stream", data)
 //   };
 
-//   const postUrl = this._constructEndpointURL('gatewayconfig');
+//   const postUrl = this.__constructEndpointURL('gatewayconfig');
 
-//   this._logEvent("POST", postUrl, dobj);
+//   this.__logEvent("POST", postUrl, dobj);
 
 //   rest.post(postUrl, {
 //     multipart: true,
@@ -895,9 +941,9 @@ module.exports = class FCPClient {
 //   sitekey = sitekey || '';
 //   sitekey = sitekey.toLowerCase().trim();
 
-//   const URL = this._constructEndpointURL(`/sites/${sitekey}/publishers/`);
+//   const URL = this.__constructEndpointURL(`/sites/${sitekey}/publishers/`);
 
-//   this._logEvent("GET", URL);
+//   this.__logEvent("GET", URL);
 //   rest.get(URL, {
 //     username: this.username,
 //     password: this.password
@@ -922,9 +968,9 @@ module.exports = class FCPClient {
 //     publisherId = null;
 //   }
 
-//   const URL = this._constructEndpointURL(`/sites/${sitekey}/publishers/${publisherId}`);
+//   const URL = this.__constructEndpointURL(`/sites/${sitekey}/publishers/${publisherId}`);
 
-//   this._logEvent("DELETE", URL);
+//   this.__logEvent("DELETE", URL);
 //   rest.del(URL, {
 //     username: this.username,
 //     password: this.password
