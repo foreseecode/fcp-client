@@ -115,6 +115,7 @@ module.exports = {
   handleFCPCall,
   fcpRef: FcpClient.fcpRef,
   fcpUrls: FcpClient.fcpUrls,
+  gatewayUrls: FcpClient.gatewayUrls,
   environmentShort: FcpClient.environmentShort,
   promptForFCPCredentials: FcpClient.promptForFCPCredentials,
 };
