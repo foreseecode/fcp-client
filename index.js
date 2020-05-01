@@ -6,7 +6,7 @@ const logErr = (message,err) => console.log(chalk.red(message,err));
 
 const logSpacer = () => console.log(chalk.grey("---------------------------------------------"));
 
-const logResults = (endpoint, successFunction, result, wasCreated) => {
+const logResults = (endpoint, successFunction, result, wasCreated, productName) => {
   const message = result.message;
   //handle the files being returned
   if(endpoint === 'default' || (!message && endpoint === 'config')) {
@@ -23,19 +23,20 @@ const logResults = (endpoint, successFunction, result, wasCreated) => {
   if(typeof(message) != 'object') {
     console.log(chalk.blue(message));
   } else if(!Array.isArray(message)) {
-    successFunction(message, wasCreated, endpoint);
+    successFunction(message, wasCreated, endpoint, productName);
   } else if(Array.isArray(message) && message.length === 1) { //because get site likes to be special
-    successFunction(message[0], wasCreated, endpoint);
+    successFunction(message[0], wasCreated, endpoint, productName);
   } else {
     console.log(chalk.yellow(`Complete ${endpoint} list (${chalk.magenta(message.length)} results):`));
     message.forEach(value => {
       logSpacer();
-      successFunction(value, wasCreated, endpoint);
+      successFunction(value, wasCreated, endpoint, productName);
     });
   }
 };
 
-async function fancyPrint(item, wasCreated, endpoint) {
+async function fancyPrint(item, wasCreated, endpoint, productName) {
+  if(wasCreated && endpoint === 'product' && item.product != productName) wasCreated = false;
   const requireds = {
     client: 'id',
     code: 'code_md5',
@@ -106,7 +107,7 @@ async function handleFCPCall(action, endpoint, options, silent) {
     const fcp = new FcpClient(input.username,input.password,input.fcpUrl);
     const {username,password, ...noCredsInput} = input;
     const result = await fcp.callFCP(action, endpoint, noCredsInput);
-    if(!silent) logResults(endpoint.toLowerCase(),fancyPrint, result, action==='create');
+    if(!silent) logResults(endpoint.toLowerCase(),fancyPrint, result, ['create','set'].includes(action), options.product);
     return result;
   } catch(e) { logErr(`Error handling call to ${action} ${endpoint}:`,e); return 'error'; }
 };
