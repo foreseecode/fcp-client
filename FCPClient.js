@@ -385,7 +385,7 @@ module.exports = class FCPClient {
     if (needed.includes('version') && !options.version) {
       schema.properties.version = {...requiredString};
     }
-    if (options.latest) {
+    if (needed.includes('latest') && typeof options.latest === "undefined") {
       schema.properties.latest = {...requiredString, pattern: '^(true|false|invalid)$'};
       console.log(chalk.yellow("Latest: true/false/invalid."));
     }
