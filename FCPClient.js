@@ -63,7 +63,8 @@ const formify = data => {
   Object.keys(data).forEach(key => {
     if (key === 'commands') return;
     const options = Object.keys(filesRef).includes(key) ? {...filesRef[key], knownLength: data[key].length} : false;
-    options ? form.append(key, data[key], options) : form.append(key, data[key]);
+    const valueAtKey = typeof(data[key]) === 'boolean' ? data[key].toString() : data[key];
+    options ? form.append(key, valueAtKey, options) : form.append(key, valueAtKey);
   });
   return form;
 };
