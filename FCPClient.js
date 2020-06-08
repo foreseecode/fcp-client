@@ -156,7 +156,7 @@ module.exports = class FCPClient {
    *  - {String} username
    *  - {String} password
    */
-  static async get getFCPCredentials (options = {}) {
+  static async getFCPCredentials (options = {}) {
     let env;
     const schema = { properties: {} };
     
