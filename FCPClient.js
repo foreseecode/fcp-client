@@ -10,6 +10,7 @@ const zipdir = require('zip-dir');
 
 const fcpRef = require('./endpointRequirements');
 
+//does this work?
 const home = process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'];
 
 const fcpQueryParams = {
@@ -20,7 +21,7 @@ const fcpQueryParams = {
   fromDate: 'from_date',
   inactive: 'inactive',
   latest: 'latest',
-  searchTerms: 'search',
+  search: 'search',
   toDate: 'to_date',
   vendorCode: 'vendor_code',
 };
@@ -51,10 +52,11 @@ const filesRef = {
 const fetch = async (url, options) => {
   try {
     const response = await nodefetch(url,options);
-    if(response.headers.get('content-type') === 'application/octet-stream') {
-      return await response.arrayBuffer();
-    }
-    return await response.json();
+    const isFile = response.headers.get('content-type') === 'application/octet-stream';
+    
+    if (isFile) return response.arrayBuffer();
+    return response.json();
+  
   } catch (err) { throw err; }
 };
 
@@ -92,7 +94,8 @@ const getStringFromFilePath = async path => (await fsReadFile(path)).toString();
  * @constructor
  */
 module.exports = class FCPClient {
-  constructor(username, password, hostname) {
+  constructor (username, password, hostname) {
+    console.log('constructor args', arguments);
     if (!username) {
       throw new Error("Missing username");
     }
@@ -107,17 +110,15 @@ module.exports = class FCPClient {
     }
     this.username = username;
     this.password = password;
-    this.credentials = {
-      username,
-      password
-    };
     this.hostname = hostname;
     this.__log = [];
   };
 
-  static get environmentShort() { return ["dev", "qa", "qa2", "stg", "prod", "local"]; };
+  static get environmentShort () { 
+    return ["dev", "qa", "qa2", "stg", "prod", "local"]; 
+  };
 
-  static get fcpUrls() {
+  static get fcpUrls () {
     return {
       "local": "http://localhost:3001",
       "dev": "https://dev-fcp.foresee.com",
@@ -128,7 +129,7 @@ module.exports = class FCPClient {
     };
   };
 
-  static get gatewayUrls() {
+  static get gatewayUrls () {
     return {
       "local": "http://localhost:3001",
       "dev": "https://dev-gateway.foresee.com",
@@ -149,86 +150,91 @@ module.exports = class FCPClient {
   };
 
   /**
-   * Ask the user for credentials and notes if appropriate
-   * @param {Options} options
+   * Ask the user for credentials
+   * @param {Object} options
    * This could include:
    *  - {String} username
    *  - {String} password
-   *  - {Number} environment - 0 = dev, 1 = QA, 2 = QA2, 3 = stg, 4 = prod, 5 = local
-   *  - {Boolean} disableEnv - If you want to not require an environment
    */
-  static async promptForFCPCredentials (options) {
-    options = options || {};
-    let ev;
-    const schema = {
-      properties: {}
-    };
-
-    if(!options.environment && options.environment != 0) options.environment = options.env;
-    if(options.environment && isNaN(options.environment)) {
-      options.environment = FCPClient.environmentShort.indexOf(options.environment);
-    }
-    if(options.environment && (options.environment > 5 || options.environment < 0)) {
-      options.environment = undefined;
-    }
-  
-    if(options.environment === 0) options.environment = '0'; //becauase 0 evaluates false in the next section
-
+  static async getFCPCredentials (options = {}) {
+    let env;
+    const schema = { properties: {} };
+    
     // Read FCP credentials from passed in, ~/env.json or environment variables, if any exist
     try {
-      ev = JSON.parse((await fsReadFile(home + '/env.json')).toString());
-      options.username = options.username || ev.FCP_USERNAME || process.env.FCP_USERNAME;
-      options.password = options.password || ev.FCP_PASSWORD || process.env.FCP_PASSWORD;
-      options.environment = options.environment || ev.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
+      env = JSON.parse(await fsReadFile(home + '/env.json').toString());
+      options.username = options.username || env.FCP_USERNAME || process.env.FCP_USERNAME;
+      options.password = options.password || env.FCP_PASSWORD || process.env.FCP_PASSWORD;
     } catch (e) {
+      console.log(`error parsing "${home}/env.json": ${e}`);
     }
-
+    
     if (!options.username || !options.password) {
-      console.log(chalk.cyan("Please enter your FCP credentials (no @ is needed). "));
-    }
-    if (!options.username) {
+      console.log(chalk.cyan("Please enter your FCP credentials (no @ is required). "));
+      
       schema.properties.username = {
         required: true
       };
-    }
-    if (!options.password) {
+      
       schema.properties.password = {
         hidden: true,
         required: true
       }
-    }
-    if (!options.disableEnv && typeof (options.environment) === "undefined") {
-      schema.properties.environment = {
-        required: true,
-        type: 'integer',
-        message: '0 = dev, 1 = QA, 2 = QA2, 3 = stg, 4 = prod, 5 = localhost:3001'
-      };
-      console.log("For environment, enter a number: " + chalk.yellow("0 = dev") + ", " + chalk.magenta("1 = QA") + ", " + chalk.magenta("2 = QA2") + ", " + chalk.green("3 = stg") + ", " + chalk.blue("4 = prod") + ", " + "5 = localhost:3001");
-    }
-  
-    try {
+      
       await prompt.start();
       const result = await prompt.get(schema);
       Object.assign(options, result);
-    
-      if (options.username.indexOf('@') === -1) {
-        options.username = options.username.trim() + '@aws.foreseeresults.com';
-      }
-
-      options.env = options.environment;
-      if (options.env >= 0 && options.env <= 5) {
-        // dev, qa, qa2, stg, prod, local
-        const shorty = FCPClient.environmentShort[options.env];
-        options.fcpUrl = FCPClient.fcpUrls[shorty];
-        options.gatewayUrl = FCPClient.gatewayUrls[shorty];
-      } else if (!options.disableEnv) {
-        throw new Error("Invalid environment.");
-      }
-      delete options.disableEnv; //was causing an error in multipart requests
-
-      return options;
-    } catch (e) {
     }
+    
+    if (!~options.username.indexOf('@')) {
+      options.username = options.username.trim() + '@aws.foreseeresults.com';
+    }
+    
+    return options;
+  };
+
+  /**
+   * Ask the user for environment
+   * @param {Object} options
+   * This could include:
+   *  - {String} environment: dev, qa, qa2, stg, prod, local
+   */
+  static async getFCPEnvironment (options = {}) {
+    let env;
+    const schema = {properties: {}};
+
+    // Read FCP environment from passed in options, ~/env.json or environment variables, if any exist
+    try {
+      env = JSON.parse(await fsReadFile(home + '/env.json').toString());
+      options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
+    } catch (e) {
+      console.log(`error parsing "${home}/env.json": ${e}`);
+    }
+    
+    if (!options.env) {
+      console.log("environment: " );
+      
+      schema.properties.env = {
+        required: true,
+        type: 'string',
+        message: 'Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)'
+      };
+
+      await prompt.start();
+      const result = await prompt.get(schema);
+      Object.assign(options, result);
+    }
+
+    let validEnv = this.environmentShort.includes(options.env);
+    
+    if (validEnv) {
+      options.fcpUrl = this.fcpUrls[options.env];
+      options.gatewayUrl = this.gatewayUrls[options.env];
+    } else {
+      throw new Error("Invalid environment.");
+    }
+    
+    return options;
   };
 
   /**
@@ -261,33 +267,88 @@ module.exports = class FCPClient {
     this.__log.push(string);
   };
 
-  async callFCP(action, endpoint, options) {
+  async callFCP (action, endpoint, options = {}) {
+    
     // TODO: add a better error message so they know what came in wrong
     if(!fcpRef[action] || !fcpRef[action][endpoint]) throw new Error(`Unknown choice combination: ${action} ${endpoint}`);
-    const { type, urlFrag, needed, multipart } = fcpRef[action][endpoint];
-    options = options || {};
-    if(type === "GET") options.disableNotes = true;
-    const input = await this.promptForNeededOptions(options, needed);
-    if(input.error) throw new Error(input.error);
+    const { type, urlFrag, required, multipart } = fcpRef[action][endpoint];
+
+    if (type === "GET") options.disableNotes = true;
+    
+    const input = await this.getRequiredOptions(options, required);
+    
+    if (input.error) throw new Error(input.error);
+    
     let queryString = "";
-    if(type === "GET") {
+    
+    if (type === "GET") {
       queryString += "?"
-      if(options.searchTerms && Array.isArray(options.searchTerms)) options.searchTerms = options.searchTerms.join();
+      
+      if (options.search && Array.isArray(options.search)) options.search = options.search.join();
+      
       const paramKeys = Object.keys(input).filter(key => !!fcpQueryParams[key]);
+      
       paramKeys.forEach(key => queryString += fcpQueryParams[key]+"="+input[key])
     }
+    
     const url = this.__constructEndpointURL(
       urlFrag
-        .replace('clientIdHere',input.client_id)
-        .replace('sitekeyHere',input.site_name)
-        .replace('containerHere',input.container)
-        .replace('configTagHere',input.config_tag)
-        .replace('productHere',input.product)
-        .replace('codeIdHere',input.code_id)
-        .replace('moduleMD5Here',input.module_md5)
+        .replace(':clientId',input.client_id)
+        .replace(':site',input.site_name)
+        .replace(':container',input.container)
+        .replace(':configTag',input.config_tag)
+        .replace(':product',input.product)
+        .replace(':codeId',input.code_id)
+        .replace(':md5',input.module_md5)
     ) + queryString;
-    return await this.actuallyCallFCP(type, url, input, multipart || false);
-  };
+    
+    
+    console.log(chalk.magenta('Making FCP Call to'),url);
+    
+    const basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
+    
+    let formHeaders = {};
+    
+    let body = paramify(data);
+    
+    if (multipart) {
+      body = formify(data);
+      formHeaders = body.getHeaders();
+    }
+    
+    const requestOptions = {
+      method: type,
+      headers: { ...formHeaders, ...basicAuth }
+    };
+    
+    if (type != "GET") requestOptions.body = body;
+
+    this.__logEvent(type, url);
+    
+    try {
+      const result = await fetch(url, requestOptions);
+      
+      if (!options.silent) logResults(endpoint.toLowerCase(), fancyPrint, result, ['create','set'].includes(action), options.product);
+      
+      if (type === "GET" && (url.includes('/code/files/') || url.includes('/modules/files/'))) {
+        const zip = new jsZip(Buffer.from(result), {createFolders: true, checkCRC32: true});
+        const files = Object.values(zip.files).map(function(file) {
+          return {
+            folder: file.dir,
+            name: file.name,
+            buffer: file.dir ? null : file.asNodeBuffer(),
+          };
+        });
+        return files;
+      }
+      
+      return result;
+      
+    } catch (err) {
+      return err;
+    }
+
+  }
 
   /**
    * Ask the user for credentials and notes if appropriate
@@ -306,12 +367,8 @@ module.exports = class FCPClient {
    *  - {true/false/invalid} latest - If you want to pass that value on
    * As well as any other values you just want to pass on (anything not listed will be included in return)
    */
-  async promptForNeededOptions (options, needed) {
-    options = options || {};
-    needed = needed || [];
-    const schema = {
-      properties: {}
-    };
+  async getRequiredOptions (options = {}, required = []) {
+    const schema = { properties: {} };
 
     if (!options.disableNotes && typeof (options.notes) === "undefined") {
       schema.properties.notes = {
@@ -325,7 +382,7 @@ module.exports = class FCPClient {
     };
     
     if(!options.clientId && options.client_id) options.clientId = options.client_id;
-    if (needed.includes('clientId') && !options.clientId) {
+    if (required.includes('clientId') && !options.clientId) {
       schema.properties.clientId = {
         required: true,
         type: 'integer',
@@ -333,42 +390,42 @@ module.exports = class FCPClient {
       }
     }
     if(!options.sitekey && options.site_name) options.sitekey = options.site_name;
-    if (needed.includes('sitekey') && !options.sitekey) {
+    if (required.includes('sitekey') && !options.sitekey) {
       schema.properties.sitekey = {...requiredString};
     }
-    if (needed.includes('container') && !options.container) {
+    if (required.includes('container') && !options.container) {
       schema.properties.container = {...requiredString};
     }
-    if (needed.includes('product') && !options.product) {
+    if (required.includes('product') && !options.product) {
       schema.properties.product = {...requiredString};
     }
-    if (needed.includes('name') && !options.name) {
+    if (required.includes('name') && !options.name) {
       schema.properties.name = {...requiredString};
     }
-    if (needed.includes('metadata') && !options.metadata) {
+    if (required.includes('metadata') && !options.metadata) {
       const message = "Metadata can be the website URL, client contact name, other trademarks, etc. This is useful for searching.";
       schema.properties.metadata = {...requiredString, message};
     }
     if(!options.configTag && options.config_tag) options.configTag = options.config_tag;
-    if (needed.includes('configTag') && !options.configTag) {
+    if (required.includes('configTag') && !options.configTag) {
       schema.properties.configTag = {...requiredString};
     }
-    if (needed.includes('configStr') && !options.configStr) {
+    if (required.includes('configStr') && !options.configStr) {
       const message = "This is the javascript config you want to upload, stringified";
       schema.properties.configStr = {...requiredString, message};
     }
     if(!options.vendorCode && options.vendor_code) options.vendorCode = options.vendor_code;
-    if (needed.includes('vendorCode') && !options.vendorCode) {
+    if (required.includes('vendorCode') && !options.vendorCode) {
       const message = "8 char limit, accepted chars A-Z/a-z";
       schema.properties.vendorCode = {...requiredString, message};
     }
     if(!options.prereleaseCode && options.prerelease_code) options.prereleaseCode = options.prerelease_code;
-    if (needed.includes('prereleaseCode') && !options.prereleaseCode) {
+    if (required.includes('prereleaseCode') && !options.prereleaseCode) {
       const message = "8 char limit, accepted chars A-Z/a-z"
       schema.properties.prereleaseCode = {...requiredString, message};
     }
     if(!options.codeId && options.code_id) options.codeId = options.code_id;
-    if (needed.includes('codeId') && !options.codeId) {
+    if (required.includes('codeId') && !options.codeId) {
       schema.properties.codeId = {
         required: true,
         type: 'integer',
@@ -376,34 +433,43 @@ module.exports = class FCPClient {
       }
     }
     if(!options.moduleName && options.module_name) options.moduleName = options.module_name;
-    if (needed.includes('moduleName') && !options.moduleName) {
+    
+    if (required.includes('moduleName') && !options.moduleName) {
       schema.properties.moduleName = {...requiredString};
     }
+    
     if(!options.moduleMD5 && options.module_md5) options.moduleMD5 = options.module_md5;
-    if (needed.includes('moduleMD5') && !options.moduleMD5) {
+    if (required.includes('moduleMD5') && !options.moduleMD5) {
       schema.properties.moduleMD5 = {...requiredString};
     }
-    if (needed.includes('version') && !options.version) {
+    
+    if (required.includes('version') && !options.version) {
       schema.properties.version = {...requiredString};
     }
-    if (needed.includes('latest') && typeof options.latest === "undefined") {
+    
+    if (required.includes('latest') && typeof options.latest === "undefined") {
       schema.properties.latest = {...requiredString, pattern: '^(true|false|invalid)$'};
       console.log(chalk.yellow("Latest: true/false/invalid."));
     }
+    
     const fileMessage = chalk.grey("This is the relative or absolute path to the file, including the extension");
-    if (needed.includes('codePath') && !options.codePath && !options.codeBuf && !options.code) {
+    if (required.includes('codePath') && !options.codePath && !options.codeBuf && !options.code) {
       schema.properties.codePath = {...requiredString, message:fileMessage};
     }
-    if (needed.includes('configPath') && !options.configPath && !options.configStr && !options.config) {
+    
+    if (required.includes('configPath') && !options.configPath && !options.configStr && !options.config) {
       schema.properties.configPath = {...requiredString, message:fileMessage};
     }
-    if (needed.includes('filePath') && !options.filePath && !options.fileBuf && !options.file) {
+    
+    if (required.includes('filePath') && !options.filePath && !options.fileBuf && !options.file) {
       schema.properties.filePath = {...requiredString, message:fileMessage};
     }
-    if (needed.includes('jsonPath') && !options.jsonPath && !options.jsonStr && !options.json) {
+    
+    if (required.includes('jsonPath') && !options.jsonPath && !options.jsonStr && !options.json) {
       schema.properties.jsonPath = {...requiredString, message:fileMessage};
     }
-    if (needed.includes('modulePath') && !options.modulePath && !options.moduleBuf && !options.module) {
+    
+    if (required.includes('modulePath') && !options.modulePath && !options.moduleBuf && !options.module) {
       schema.properties.modulePath = {...requiredString, message:fileMessage};
     }
   
@@ -451,59 +517,120 @@ module.exports = class FCPClient {
         options.module = options.moduleBuf;
       }
 
-      if (needed.includes('codePath') && !options.code) {
+      if (required.includes('codePath') && !options.code) {
         throw new Error("Missing code buffer, unable to create zip folder to send with request.");
       }
-      if (needed.includes('configPath') && !options.config) {
+      if (required.includes('configPath') && !options.config) {
         throw new Error("Missing config string, unable to create js file to send with request.");
       }
-      if (needed.includes('filePath') && !options.file) {
+      if (required.includes('filePath') && !options.file) {
         throw new Error("Missing file buffer, unable to create zip folder to send with request.");
       }
-      if (needed.includes('jsonPath') && !options.json) {
+      if (required.includes('jsonPath') && !options.json) {
         throw new Error("Missing json string, unable to create json file to send with request.");
       }
-      if (needed.includes('modulePath') && !options.module) {
+      if (required.includes('modulePath') && !options.module) {
         throw new Error("Missing module buffer, unable to create zip folder to send with request.");
       }
 
       return options;
     } catch (error) { return { error }; }
-  };
-
-  async actuallyCallFCP (type, url, data, multipart) {
-    console.log(chalk.magenta('Making FCP Call to'),url);
-    const basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.credentials.username}:${this.credentials.password}`)).toString('base64')}` };
-    let formHeaders = {};
-    let body = paramify(data);
-    if(multipart) {
-      body = formify(data);
-      formHeaders = body.getHeaders();
-    }
-    const requestOptions = {
-      method: type,
-      headers: { ...formHeaders, ...basicAuth }
-    };
-    if (type != "GET") requestOptions.body = body;
-
-    this.__logEvent(type.toUpperCase(), url);
-    try {
-      const result = await fetch(url, requestOptions);
-      if(type === "GET" && (url.includes('/code/files/') || url.includes('/modules/files/'))) {
-        const zip = new jsZip(Buffer.from(result), {createFolders: true, checkCRC32: true});
-        const files = Object.values(zip.files).map(function(file) {
-          return {
-            folder: file.dir,
-            name: file.name,
-            buffer: file.dir ? null : file.asNodeBuffer(),
-          };
-        });
-        return files;
-      }
-      return result;
-    } catch (err) {
-      return err;
-    }
-  };
-
+  }
 }
+
+function logResults (endpoint, successFunction, result, wasCreated, productName) {
+  const message = result.message;
+  
+  //handle the files being returned
+  if (endpoint === 'default' || (!message && endpoint === 'config')) {
+    console.log(chalk.yellow('returned config:'), endpoint === 'default' ? message : result);
+    return;
+  }
+  
+  if (!message) {
+    const files = result.map(file => file.name);
+    console.log(chalk.yellow(`${files.length} zip file names:`), files);
+    return;
+  }
+  
+  //handle non-files
+  if (['code_invalid', 'code_latest'].includes(endpoint)) endpoint = 'code';
+  
+  if (typeof(message) != 'object') {
+    console.log(chalk.blue(message));
+  } else if (!Array.isArray(message)) {
+    successFunction(message, wasCreated, endpoint, productName);
+  } else if (Array.isArray(message) && message.length === 1) { //because get site likes to be special
+    successFunction(message[0], wasCreated, endpoint, productName);
+  } else {
+    console.log(chalk.yellow(`Complete ${endpoint} list (${chalk.magenta(message.length)} results):`));
+    message.forEach(value => {
+      console.log(chalk.grey("---------------------------------------------"));
+      successFunction(value, wasCreated, endpoint, productName);
+    });
+  }
+};
+
+function fancyPrint (item, wasCreated, endpoint, productName) {
+  if (wasCreated && endpoint === 'product' && item.product !== productName) wasCreated = false;
+  
+  const requireds = {
+    client: 'id',
+    code: 'code_md5',
+    config: 'tag',
+    container: 'site_name',
+    default: 'unrealisticExpectations',
+    module: 'module_md5',
+    product: 'tag',
+    site: 'alias'
+  };
+  const capitalize = s => s && s[0] && s[0].toUpperCase() + s.slice(1);
+  
+  const title = capitalize(endpoint);
+  const required = requireds[endpoint];
+  
+  if (!required) {
+    console.log(
+      chalk.magenta(`   ${title} contents: `),
+      chalk.grey(JSON.stringify(item)),
+    );
+  } else {
+    const whatToPrint = {
+      client: chalk.grey(`[ID: ${chalk.yellow(item.id)}] `) + item.name,
+      code:
+        chalk.grey(`[code version: ${chalk.yellow(item.version)}] `) + 
+        (item.vendor_code ? `${chalk.grey('vendor code: ') + item.vendor_code} ` : ""),
+      config: 
+        chalk.grey(`[container config: ${chalk.yellow(item.tag)}] `) +
+        (item.code_version ? `${chalk.grey('code version: ') + item.code_version} ` : "") +
+        (item.vendor_code ? `${chalk.grey('vendor code: ') + item.vendor_code} ` : ""),
+      container:
+        chalk.grey(`[site: ${chalk.yellow(item.site_name)}] `) +
+        chalk.grey(`[container: ${chalk.yellow(item.name)}] `) +
+        (item.config_tag ? `${chalk.grey('config tag: ') + item.config_tag} ` : ""),
+      module:
+        chalk.grey(`[name: ${chalk.yellow(item.module_name)}] `) +
+        chalk.grey(`[version: ${chalk.yellow(item.version)}] `) +
+        (item.vendor_code ? `${chalk.grey('vendor code: ') + item.vendor_code} ` : ""),
+      product:
+        chalk.grey(`[product: ${chalk.yellow(item.product)}] `) +
+        chalk.grey(`[product config: ${chalk.yellow(item.tag)}] `) +
+        (item.config_tag ? `${chalk.grey('code version: ') + item.code_version} ` : "") +
+        (item.vendor_code ? `${chalk.grey('vendor code: ') + item.vendor_code} ` : ""),
+      site:
+        chalk.grey(`[CID: ${chalk.yellow(item.client_id)}] `) + 
+        chalk.grey(`[sitekey: ${chalk.yellow(item.name)}] `) + 
+        (item.alias ? `${chalk.grey('alias: ') + item.alias} ` : ""),
+    };
+    
+    console.log(
+      chalk.magenta(`  ${title}: `),
+      whatToPrint[endpoint],
+      item.deleted && item.deleted != 0 ? chalk.red("DELETED") : "",
+      chalk.magenta(!!wasCreated ? "was created." : ""),
+    );
+    
+    if (item.metadata) console.log(chalk.magenta("  metadata: "), item.metadata);
+  }
+};
+
