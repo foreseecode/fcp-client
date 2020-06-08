@@ -112,11 +112,11 @@ module.exports = class FCPClient {
     this.password = password;
     this.hostname = hostname;
     this.__log = [];
-  };
+  }
 
   static get environmentShort () { 
     return ["dev", "qa", "qa2", "stg", "prod", "local"]; 
-  };
+  }
 
   static get fcpUrls () {
     return {
@@ -127,7 +127,7 @@ module.exports = class FCPClient {
       "stg": "https://stg-fcp.foresee.com",
       "prod": "https://fcp.foresee.com"
     };
-  };
+  }
 
   static get gatewayUrls () {
     return {
@@ -138,16 +138,16 @@ module.exports = class FCPClient {
       "stg": "https://stg-gateway.foresee.com",
       "prod": "https://gateway.foresee.com"
     };
-  };
+  }
 
-  static get fcpRef() { return fcpRef; };
+  static get fcpRef() { return fcpRef; }
 
   static get fcpValidEndpoints() {
     // TODO: '.reduce((acc, val) => acc.concat(val), [])' can be replaced with '.flat()' once we are able to bump node up to/past 11
     return Object.keys(fcpRef)
       .map(action => Object.keys(fcpRef[action]))
       .reduce((acc, val) => acc.concat(val), []);
-  };
+  }
 
   /**
    * Ask the user for credentials
@@ -156,7 +156,7 @@ module.exports = class FCPClient {
    *  - {String} username
    *  - {String} password
    */
-  static async getFCPCredentials (options = {}) {
+  static async get getFCPCredentials (options = {}) {
     let env;
     const schema = { properties: {} };
     
@@ -191,8 +191,8 @@ module.exports = class FCPClient {
     }
     
     return options;
-  };
-
+  }
+  
   /**
    * Ask the user for environment
    * @param {Object} options
@@ -235,7 +235,7 @@ module.exports = class FCPClient {
     }
     
     return options;
-  };
+  }
 
   /**
    * Return a fully qualified URL for an endpoint
@@ -247,7 +247,7 @@ module.exports = class FCPClient {
       endpoint = endpoint.substr(1);
     }
     return this.hostname + "/" + endpoint;
-  };
+  }
 
   /**
    * Log an event
@@ -265,7 +265,7 @@ module.exports = class FCPClient {
     });
     string = string.slice(0,-1);
     this.__log.push(string);
-  };
+  }
 
   async callFCP (action, endpoint, options = {}) {
     
