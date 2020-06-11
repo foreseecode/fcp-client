@@ -63,7 +63,6 @@ const fetch = async (url, options) => {
 const formify = data => {
   const form = new formdata();
   Object.keys(data).forEach(key => {
-    if (key === 'commands') return;
     const options = Object.keys(filesRef).includes(key) ? {...filesRef[key], knownLength: data[key].length} : false;
     const valueAtKey = typeof(data[key]) === 'boolean' ? data[key].toString() : data[key];
     options ? form.append(key, valueAtKey, options) : form.append(key, valueAtKey);
@@ -74,7 +73,6 @@ const formify = data => {
 const paramify = data => {
   const params = new URLSearchParams();
   Object.keys(data).forEach(key => {
-    if (key === 'commands') return;
     params.append(key, data[key]);
   });
   return params;
