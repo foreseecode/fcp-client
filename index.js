@@ -63,7 +63,6 @@ const fetch = async (url, options) => {
 const formify = data => {
   const form = new formdata();
   Object.keys(data).forEach(key => {
-    if (key === 'commands') return;
     const options = Object.keys(filesRef).includes(key) ? {...filesRef[key], knownLength: data[key].length} : false;
     const valueAtKey = typeof(data[key]) === 'boolean' ? data[key].toString() : data[key];
     options ? form.append(key, valueAtKey, options) : form.append(key, valueAtKey);
@@ -74,7 +73,6 @@ const formify = data => {
 const paramify = data => {
   const params = new URLSearchParams();
   Object.keys(data).forEach(key => {
-    if (key === 'commands') return;
     params.append(key, data[key]);
   });
   return params;
@@ -164,7 +162,7 @@ module.exports = class FCPClient {
     
     // Read FCP credentials from passed in, ~/env.json or environment variables, if any exist
     try {
-      env = JSON.parse(await fsReadFile(home + '/env.json').toString());
+      env = JSON.parse((await fsReadFile(home + '/env.json')).toString());
       options.username = options.username || env.FCP_USERNAME || process.env.FCP_USERNAME;
       options.password = options.password || env.FCP_PASSWORD || process.env.FCP_PASSWORD;
     } catch (e) {
@@ -207,7 +205,7 @@ module.exports = class FCPClient {
 
     // Read FCP environment from passed in options, ~/env.json or environment variables, if any exist
     try {
-      env = JSON.parse(await fsReadFile(home + '/env.json').toString());
+      env = JSON.parse((await fsReadFile(home + '/env.json')).toString());
       options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     } catch (e) {
 
