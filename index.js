@@ -162,7 +162,7 @@ module.exports = class FCPClient {
     
     // Read FCP credentials from passed in, ~/env.json or environment variables, if any exist
     try {
-      env = JSON.parse(await fsReadFile(home + '/env.json').toString());
+      env = JSON.parse((await fsReadFile(home + '/env.json')).toString());
       options.username = options.username || env.FCP_USERNAME || process.env.FCP_USERNAME;
       options.password = options.password || env.FCP_PASSWORD || process.env.FCP_PASSWORD;
     } catch (e) {
@@ -205,7 +205,7 @@ module.exports = class FCPClient {
 
     // Read FCP environment from passed in options, ~/env.json or environment variables, if any exist
     try {
-      env = JSON.parse(await fsReadFile(home + '/env.json').toString());
+      env = JSON.parse((await fsReadFile(home + '/env.json')).toString());
       options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     } catch (e) {
 
