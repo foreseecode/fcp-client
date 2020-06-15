@@ -240,7 +240,7 @@ module.exports = class FCPClient {
    * Ask the user to set their environment
    */
   static async setFCPEnvironment () {
-    console.log('valid environments: prod, stg, qa, qa2, dev')
+    console.log('valid environments: prod, stg, qa, qa2, dev, local')
 
     const schema = { properties: {} };
     
@@ -252,10 +252,10 @@ module.exports = class FCPClient {
     const result = await prompt.get(schema);
     const { environment } = result
     
-    const validEnvironments = ['prod', 'stg', 'qa', 'qa2', 'dev']
+    const validEnvironments = ['prod', 'stg', 'qa', 'qa2', 'dev', 'local']
 
     if (!environment || !validEnvironments.includes(environment)) {
-      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev)')
+      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev, local)')
     }
 
     let envObj = {}
