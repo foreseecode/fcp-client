@@ -7,11 +7,11 @@ const jsZip = require('node-zip');
 const { URLSearchParams } = require('url');
 const { promisify } = require('util');
 const zipdir = require('zip-dir');
-
 const fcpRef = require('./endpointRequirements');
 
 //does this work?
 const home = process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'];
+const envFilePath = home + '/env.json'
 
 const fcpQueryParams = {
   active: 'active',
@@ -150,6 +150,50 @@ module.exports = class FCPClient {
   }
 
   /**
+   * Ask the user to set their credentials
+   */
+  static async setFCPCredentials () {
+    const schema = { properties: {} };
+    
+    schema.properties.username = {
+      required: true
+    };
+    
+    schema.properties.password = {
+      hidden: true,
+      required: true
+    }
+    
+    await prompt.start();
+    const result = await prompt.get(schema);
+    const { username, password } = result
+    
+    if (!username) {
+      throw new Error('Please provide a valid username.')
+    }
+
+    if (!password) {
+      throw new Error('Please provide a valid password.')
+    }
+
+    let envObj = {}
+    try {
+      envObj = JSON.parse((await fsReadFile(envFilePath)).toString());
+    } catch (e) {
+      // console.log(`error parsing "${home}/env.json": ${e}`);
+    }
+
+    envObj.FCP_USERNAME = username
+    envObj.FCP_PASSWORD = password
+
+    const writeStream = fs.createWriteStream(envFilePath);
+    writeStream.write(JSON.stringify(envObj))
+    writeStream.end()
+
+    console.log(`credentials set in the ${envFilePath} file`)
+  }
+
+  /**
    * Ask the user for credentials
    * @param {Object} options
    * This could include:
@@ -159,10 +203,9 @@ module.exports = class FCPClient {
   static async getFCPCredentials (options = {}) {
     let env;
     const schema = { properties: {} };
-    
     // Read FCP credentials from passed in, ~/env.json or environment variables, if any exist
     try {
-      env = JSON.parse((await fsReadFile(home + '/env.json')).toString());
+      env = JSON.parse((await fsReadFile(envFilePath)).toString());
       options.username = options.username || env.FCP_USERNAME || process.env.FCP_USERNAME;
       options.password = options.password || env.FCP_PASSWORD || process.env.FCP_PASSWORD;
     } catch (e) {
@@ -192,6 +235,44 @@ module.exports = class FCPClient {
     
     return options;
   }
+
+  /**
+   * Ask the user to set their environment
+   */
+  static async setFCPEnvironment () {
+    console.log('valid environments: prod, stg, qa, qa2, dev')
+
+    const schema = { properties: {} };
+    
+    schema.properties.environment = {
+      required: true
+    };
+    
+    await prompt.start();
+    const result = await prompt.get(schema);
+    const { environment } = result
+    
+    const validEnvironments = ['prod', 'stg', 'qa', 'qa2', 'dev']
+
+    if (!environment || !validEnvironments.includes(environment)) {
+      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev)')
+    }
+
+    let envObj = {}
+    try {
+      envObj = JSON.parse((await fsReadFile(envFilePath)).toString());
+    } catch (e) {
+      // console.log(`error parsing "${home}/env.json": ${e}`);
+    }
+
+    envObj.FCP_ENVIRONMENT = environment
+
+    const writeStream = fs.createWriteStream(envFilePath);
+    writeStream.write(JSON.stringify(envObj))
+    writeStream.end()
+
+    console.log(`environment set in the ${envFilePath} file`)
+  }
   
   /**
    * Ask the user for environment
@@ -205,7 +286,7 @@ module.exports = class FCPClient {
 
     // Read FCP environment from passed in options, ~/env.json or environment variables, if any exist
     try {
-      env = JSON.parse((await fsReadFile(home + '/env.json')).toString());
+      env = JSON.parse((await fsReadFile(envFilePath)).toString());
       options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     } catch (e) {
 
@@ -350,10 +431,6 @@ module.exports = class FCPClient {
     }
 
   }
-
-
-
-
 
   /**
    * Ask the user for credentials and notes if appropriate
