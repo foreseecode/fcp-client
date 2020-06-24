@@ -582,11 +582,11 @@ module.exports = class FCPClient {
     }
     
     if (required.includes('filePath') && !options.filePath && !options.fileBuf && !options.file) {
-      schema.properties.filePath = {...requiredString, message:fileMessage};
+      schema.properties.filePath = {type: "string", message:fileMessage};
     }
     
     if (required.includes('jsonPath') && !options.jsonPath && !options.jsonStr && !options.json) {
-      schema.properties.jsonPath = {...requiredString, message:fileMessage};
+      schema.properties.jsonPath = {type: "string", message:fileMessage};
     }
     
     if (required.includes('modulePath') && !options.modulePath && !options.moduleBuf && !options.module) {
