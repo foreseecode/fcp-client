@@ -370,7 +370,7 @@ module.exports = class FCPClient {
       
       const paramKeys = Object.keys(input).filter(key => !!fcpQueryParams[key]);
       
-      paramKeys.forEach(key => queryString += fcpQueryParams[key]+"="+input[key])
+      paramKeys.forEach(key => queryString += fcpQueryParams[key]+"="+input[key]+"&")
     }
 
     const url = this.__constructEndpointURL(
@@ -450,6 +450,8 @@ module.exports = class FCPClient {
    * As well as any other values you just want to pass on (anything not listed will be included in return)
    */
   async getRequiredOptions (options = {}, required = []) {
+    if(options.doNotPropmt) return options;
+
     const schema = { properties: {} };
 
     if (!options.disableNotes && typeof (options.notes) === "undefined") {
@@ -463,6 +465,13 @@ module.exports = class FCPClient {
       type: "string",
     };
     
+    if(!options.client_id && options.clientId) options.client_id = options.clientId;
+    if (required.includes('client_id') && !options.client_id) {
+      schema.properties.client_id = {
+        type: 'integer',
+        message: chalk.yellow("Client ID should be a non-zero integer."),
+      }
+    }
     if(!options.clientId && options.client_id) options.clientId = options.client_id;
     if (required.includes('clientId') && !options.clientId) {
       schema.properties.clientId = {
@@ -539,10 +548,30 @@ module.exports = class FCPClient {
     }
     
     if (required.includes('latest') && typeof options.latest === "undefined") {
-      schema.properties.latest = {...requiredString, pattern: '^(true|false|invalid)$'};
+      schema.properties.latest = {type: "string", pattern: '^(true|false|invalid)$'};
       console.log(chalk.yellow("Latest: true/false/invalid."));
     }
     
+    if (required.includes('duplicates') && typeof options.duplicates != "bool") {
+      schema.properties.duplicates = { type: "bool"};
+    }
+
+    if (required.includes('deleted') && typeof options.deleted != "bool") {
+      schema.properties.deleted = { type: "bool"};
+    }
+
+    if (required.includes('active') && typeof options.active != "bool") {
+      schema.properties.active = { type: "bool"};
+    }
+
+    if (required.includes('inactive') && typeof options.inactive != "bool") {
+      schema.properties.inactive = { type: "bool"};
+    }
+
+    if (required.includes('search') && typeof options.search === "undefined") {
+      schema.properties.search = {type: "string"};
+    }
+
     const fileMessage = chalk.grey("This is the relative or absolute path to the file, including the extension");
     if (required.includes('codePath') && !options.codePath && !options.codeBuf && !options.code) {
       schema.properties.codePath = {...requiredString, message:fileMessage};
