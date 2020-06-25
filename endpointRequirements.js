@@ -14,7 +14,7 @@ module.exports = {
     code: {
       type: "POST",
       urlFrag: 'code',
-      required: ['codePath','notes','version'],
+      required: ['codePath','notes','version','latest'],
       multipart: true,
     },
     config: {
@@ -43,7 +43,7 @@ module.exports = {
     product: {
       type: "POST",
       urlFrag: 'sites/:site/containers/:container/products/:product',
-      required: ['site','container','product','notes','configPath','vendorCode'],
+      required: ['site','container','product','notes','configPath','vendorCode','jsonPath','filePath'],
       multipart: true,
     },
     site: {
@@ -92,15 +92,17 @@ module.exports = {
     client: {
       type: "GET",
       urlFrag: 'clients',
+      required: ['search'],
     },
     code: {
       type: "GET",
       urlFrag: 'code',
+      required: ['duplicates','latest'],
     },
     config: {
       type: "GET",
       urlFrag: 'sites/:site/containers/:container/configs',
-      required: ['site','container'],
+      required: ['site','container','deleted','active'],
     },
     container: {
       type: "GET",
@@ -114,11 +116,12 @@ module.exports = {
     product: {
       type: "GET",
       urlFrag: 'sites/:site/containers/:container/products',
-      required: ['site','container'],
+      required: ['site','container','deleted','inactive'],
     },
     site: {
       type: "GET",
       urlFrag: 'sites',
+      required: ['client_id','deleted'],
     },
   },
   set: {
