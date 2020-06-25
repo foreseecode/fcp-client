@@ -596,6 +596,8 @@ module.exports = class FCPClient {
     try {
       await prompt.start();
       const result = await prompt.get(schema);
+      const emptyKeys = Object.keys(result).filter(value => result[value] === '');
+      emptyKeys.forEach(key => delete result[key]);
       Object.assign(options, result);
 
       if(options.clientId) options.client_id = options.clientId;
@@ -642,12 +644,6 @@ module.exports = class FCPClient {
       }
       if (required.includes('configPath') && !options.config) {
         throw new Error("Missing config string, unable to create js file to send with request.");
-      }
-      if (required.includes('filePath') && !options.file) {
-        throw new Error("Missing file buffer, unable to create zip folder to send with request.");
-      }
-      if (required.includes('jsonPath') && !options.json) {
-        throw new Error("Missing json string, unable to create json file to send with request.");
       }
       if (required.includes('modulePath') && !options.module) {
         throw new Error("Missing module buffer, unable to create zip folder to send with request.");
