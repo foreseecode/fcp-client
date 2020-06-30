@@ -450,7 +450,7 @@ module.exports = class FCPClient {
    * As well as any other values you just want to pass on (anything not listed will be included in return)
    */
   async getRequiredOptions (options = {}, required = []) {
-    if(options.doNotPropmt) return options;
+    if(options.doNotPrompt) return options;
 
     const schema = { properties: {} };
 
