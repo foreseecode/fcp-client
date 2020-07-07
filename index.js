@@ -552,20 +552,20 @@ module.exports = class FCPClient {
       console.log(chalk.yellow("Latest: true/false/invalid."));
     }
     
-    if (required.includes('duplicates') && typeof options.duplicates != "bool") {
-      schema.properties.duplicates = { type: "bool"};
+    if (required.includes('duplicates') && typeof options.duplicates != "boolean") {
+      schema.properties.duplicates = { type: "boolean"};
     }
 
-    if (required.includes('deleted') && typeof options.deleted != "bool") {
-      schema.properties.deleted = { type: "bool"};
+    if (required.includes('deleted') && typeof options.deleted != "boolean") {
+      schema.properties.deleted = { type: "boolean"};
     }
 
-    if (required.includes('active') && typeof options.active != "bool") {
-      schema.properties.active = { type: "bool"};
+    if (required.includes('active') && typeof options.active != "boolean") {
+      schema.properties.active = { type: "boolean"};
     }
 
-    if (required.includes('inactive') && typeof options.inactive != "bool") {
-      schema.properties.inactive = { type: "bool"};
+    if (required.includes('inactive') && typeof options.inactive != "boolean") {
+      schema.properties.inactive = { type: "boolean"};
     }
 
     if (required.includes('search') && typeof options.search === "undefined") {
