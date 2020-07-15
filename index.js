@@ -15,6 +15,7 @@ const envFilePath = home + '/env.json'
 
 const fcpQueryParams = {
   active: 'active',
+  client_id: 'client_id',
   clientId: 'client_id',
   deleted: 'deleted',
   duplicates: 'duplicates',
@@ -99,6 +100,9 @@ module.exports = class FCPClient {
     if (!username) {
       throw new Error("Missing username");
     }
+    if (username.indexOf('@') === -1) {
+      throw new Error("Username should be an email address");
+    }
     if (!password) {
       throw new Error("Missing password");
     }
@@ -166,7 +170,7 @@ module.exports = class FCPClient {
     
     await prompt.start();
     const result = await prompt.get(schema);
-    const { username, password } = result
+    const { username, password } = result;
     
     if (!username) {
       throw new Error('Please provide a valid username.')
@@ -350,6 +354,15 @@ module.exports = class FCPClient {
   }
 
   async callFCP (action, endpoint, options = {}) {
+    const basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
+    const testUrl = `${this.hostname}/user/groups`;
+    const testResult = await fetch(testUrl, { method: 'GET', headers: basicAuth });
+    const testResultMessage = testResult && testResult.statusCode === 200 && testResult.message;
+    const fcpGroups = Array.isArray(testResultMessage.groups) &&
+      testResultMessage.groups.filter(group => group.substr(0,4) === "fcp_");
+    if(!fcpGroups) {
+      throw new Error(JSON.stringify(testResult));
+    }
     
     // TODO: add a better error message so they know what came in wrong
     if(!fcpRef[action] || !fcpRef[action][endpoint]) throw new Error(`Unknown choice combination: ${action} ${endpoint}`);
@@ -386,8 +399,6 @@ module.exports = class FCPClient {
     
     
     console.log(chalk.magenta('Making FCP Call to'),url);
-    
-    const basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
     
     let formHeaders = {};
     
