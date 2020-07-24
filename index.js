@@ -206,11 +206,12 @@ module.exports = class FCPClient {
     // Read FCP credentials from passed in, ~/env.json or environment variables, if any exist
     try {
       env = JSON.parse((await fsReadFile(envFilePath)).toString());
-      options.username = options.username || env.FCP_USERNAME || process.env.FCP_USERNAME;
-      options.password = options.password || env.FCP_PASSWORD || process.env.FCP_PASSWORD;
     } catch (e) {
       // console.log(`error parsing "${home}/env.json": ${e}`);
+      env = {};
     }
+    options.username = options.username || env.FCP_USERNAME || process.env.FCP_USERNAME;
+    options.password = options.password || env.FCP_PASSWORD || process.env.FCP_PASSWORD;
     
     if (!options.username || !options.password) {
       console.log(chalk.cyan("Please enter your FCP credentials (no @ is required). "));
@@ -287,10 +288,10 @@ module.exports = class FCPClient {
     // Read FCP environment from passed in options, ~/env.json or environment variables, if any exist
     try {
       env = JSON.parse((await fsReadFile(envFilePath)).toString());
-      options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     } catch (e) {
-
+      env = {};
     }
+    options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     
     if (!options.env) {
       console.log('Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)');
