@@ -121,7 +121,7 @@ module.exports = {
     site: {
       type: "GET",
       urlFrag: 'sites',
-      required: ['client_id','deleted'],
+      required: ['client_id','deleted','search'],
     },
   },
   set: {
