@@ -119,7 +119,7 @@ module.exports = class FCPClient {
   }
 
   static get environmentShort () { 
-    return ["dev", "qa", "qa2", "stg", "prod", "local"]; 
+    return ["dev", "qa", "qa2", "stg", "prod", "local", "local-docker", "qfed", "ttec"]; 
   }
 
   static get fcpUrls () {
@@ -129,7 +129,10 @@ module.exports = class FCPClient {
       "qa": "https://qa-fcp.foresee.com",
       "qa2": "https://qa2-fcp.foresee.com",
       "stg": "https://stg-fcp.foresee.com",
-      "prod": "https://fcp.foresee.com"
+      "prod": "https://fcp.foresee.com",
+      "qfed": "http://qfed-xm-dkrsvc1.lab.local:3001",
+      "ttec": "https://eex-cert-brain.ttecfed.com:3010",
+      "local-docker": "http://localhost:3001"
     };
   }
 
@@ -140,7 +143,10 @@ module.exports = class FCPClient {
       "qa": "https://qa-gateway.foresee.com",
       "qa2": "https://qa2-gateway.foresee.com",
       "stg": "https://stg-gateway.foresee.com",
-      "prod": "https://gateway.foresee.com"
+      "prod": "https://gateway.foresee.com",
+      "qfed": "https://qfed-xm-sdkweb1.lab.local",
+      "ttec": "https://eex-cert-gateway.ttecfed.com",
+      "local-docker": "http://localhost:3003"
     };
   }
 
