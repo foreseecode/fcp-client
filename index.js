@@ -52,7 +52,9 @@ const filesRef = {
 const fetch = async (url, options) => {
   try {
     const response = await nodefetch(url,options);
-    const isFile = response.headers.get('content-type') === 'application/octet-stream';
+    const isFile =
+      response.headers.get('content-type') === 'application/octet-stream'
+      || response.headers.get('content-type') === 'application/zip';
     
     if (isFile) return response.arrayBuffer();
     return response.json();
