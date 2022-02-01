@@ -58,7 +58,10 @@ const fetch = async (url, options) => {
     if (isFile) return response.arrayBuffer();
     return response.json();
   
-  } catch (err) { throw err; }
+  } catch (err) {
+    console.log(err);
+    throw err;
+  }
 };
 
 const formify = data => {
