@@ -1,1219 +1,775 @@
-var async = require('async'),
-  EventEmitter = require("events"),
-  fs = require('fs'),
-  jsZip = require('node-zip'),
-  rest = require('restler'),
-  prompt = require('prompt'),
-  semver = require('semver');
+const chalk = require('chalk');
+const formdata = require('form-data');
+const fs = require('fs');
+const prompt = require('prompt-async');
+const nodefetch = require('node-fetch');
+const jsZip = require('node-zip');
+const { URLSearchParams } = require('url');
+const { promisify } = require('util');
+const zipdir = require('zip-dir');
+const fcpRef = require('./endpointRequirements');
 
-// Some cache
-var clients = {},
-  sites = {};
+//does this work?
+const home = process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'];
+const envFilePath = home + '/env.json'
 
-// An event emitter
-var clientCreated = new EventEmitter();
+const fcpQueryParams = {
+  active: 'active',
+  client_id: 'client_id',
+  clientId: 'client_id',
+  deleted: 'deleted',
+  duplicates: 'duplicates',
+  fromDate: 'from_date',
+  inactive: 'inactive',
+  latest: 'latest',
+  search: 'search',
+  toDate: 'to_date',
+  vendorCode: 'vendor_code',
+};
+
+const filesRef = {
+  code: {
+    filename: 'code.zip',
+    contentType: "application/octet-stream",
+  },
+  config: {
+    filename: 'config.js',
+    contentType: "application/javascript",
+  },
+  file: {
+    filename: 'file.zip',
+    contentType: "application/octet-stream",
+  },
+  json: {
+    filename: 'config.json',
+    contentType: "application/json",
+  },
+  module: {
+    filename: 'module.zip',
+    contentType: "application/octet-stream",
+  },
+};
+
+const fetch = async (url, options) => {
+  try {
+    const response = await nodefetch(url,options);
+    const isFile =
+      response.headers.get('content-type') === 'application/octet-stream'
+      || response.headers.get('content-type') === 'application/zip';
+    
+    if (isFile) return response.arrayBuffer();
+    return response.json();
+  
+  } catch (err) {
+    console.log(err);
+    throw err;
+  }
+};
+
+const formify = data => {
+  const form = new formdata();
+  Object.keys(data).forEach(key => {
+    const options = Object.keys(filesRef).includes(key) ? {...filesRef[key], knownLength: data[key].length} : false;
+    const valueAtKey = typeof(data[key]) === 'boolean' ? data[key].toString() : data[key];
+    options ? form.append(key, valueAtKey, options) : form.append(key, valueAtKey);
+  });
+  return form;
+};
+
+const paramify = data => {
+  const params = new URLSearchParams();
+  Object.keys(data).forEach(key => {
+    params.append(key, data[key]);
+  });
+  return params;
+}
+
+const fsReadFile = async path => await promisify(fs.readFile)(path).catch(e=>{});
+
+const getZipBufferFromFolderPath = async (rootdir, options) => await promisify(zipdir)(rootdir, options);
+
+const getStringFromFilePath = async path => (await fsReadFile(path)).toString();
 
 /**
  * Initialize a new instance of FCP Client
- * @param username
- * @param password
- * @param hostname
+ * @param {String} username
+ * @param {String} password
+ * @param {String} hostname
  * @constructor
  */
-var FCPClient = function (username, password, hostname) {
-  if (!username) {
-    throw new Error("Missing username");
-  }
-  if (!password) {
-    throw new Error("Missing password");
-  }
-  if (!hostname) {
-    throw new Error("Missing hostname");
-  }
-  if (hostname.indexOf(":/") == -1) {
-    throw new Error("Hostname should look like https://bla.bla.com with no trailing slashes");
-  }
-  this.username = username;
-  this.password = password;
-  this.hostname = hostname;
-  this._log = [];
-};
-
-/**
- * Format notes
- * @param notes
- * @private
- */
-FCPClient.prototype._formatStringField = function (str, maxlen) {
-  if (!maxlen) {
-    maxlen = 45000;
-  }
-  var nts = str || '';
-  nts = nts.replace(/:/g, ' ').replace(/\/\//g, '').replace(/\//g, ' ').replace(/\./g, ' ');
-  nts = nts.replace(/[^0-9a-zA-Z ]*/g, '');
-  nts = nts.trim();
-  if (nts.length === 0) {
-    nts = "No notes provided (_formatNotes fcp-client)";
-  }
-  if (nts.length > maxlen) {
-    nts = nts.substr(0, maxlen);
-  }
-  return nts;
-};
-
-/**
- * Return a fully qualified URL for an endpoint
- * @param endpoint
- * @private
- */
-FCPClient.prototype._constructEndpointURL = function (endpoint) {
-  if (endpoint.substr(0, 1) == "/") {
-    endpoint = endpoint.substr(1);
-  }
-  return this.hostname + "/" + endpoint;
-};
-
-/**
- * Log an event
- * @private
- */
-FCPClient.prototype._logEvent = function () {
-  var str = "";
-  for (var i = 0; i < arguments.length; i++) {
-    try {
-      str += JSON.stringify(arguments[i], function (elm, v) {
-        if (typeof v == typeof {} && v.type && v.type == "Buffer") {
-          return "[BUF]";
-        } else {
-          return v;
-        }
-      });
-    } catch (e) {
+module.exports = class FCPClient {
+  constructor (options = {}) {
+    const { username, password, environment } = options;
+    const hostname = environment.fcpUrl;
+    
+    if (!username) {
+      throw new Error("Missing username");
     }
-    if (i > 0) {
-      str += " ";
+    if (username.indexOf('@') === -1) {
+      throw new Error("Username should be an email address");
     }
-  }
-  this._log.push(str);
-};
-
-/**
- * Post new gateway JS files
- * @param uniminifiedJSStr {String} String containing the unminified JS file
- * @param minifiedJSStr {String} String containing the minified JS file
- * @param notes {String} Comments on this release
- * @param callback {Function} Callback
- */
-FCPClient.prototype.postGatewayFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
-  callback = callback || function () { };
-
-  if (!uniminifiedJSStr) {
-    throw new Error("Missing unminified JS file.");
-  }
-  if (!minifiedJSStr) {
-    throw new Error("Missing minified JS file.");
-  }
-  if (!notes) {
-    throw new Error("Missing notes.");
-  }
-  if (minifiedJSStr.length >= uniminifiedJSStr) {
-    throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
-  }
-  var zip = new jsZip();
-  zip.file('gateway.js', uniminifiedJSStr);
-  zip.file('gateway.min.js', minifiedJSStr);
-  var data = zip.generate({ base64: false, compression: 'DEFLATE' }),
-    dobj = {
-      'notes': this._formatStringField(notes),
-      'gateway': rest.data("gateway.zip", "application/octet-stream", data)
-    };
-
-  this._logEvent("POST", this._constructEndpointURL('gateway'), dobj);
-
-  rest.post(this._constructEndpointURL('gateway'), {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200);
-  });
-};
-
-/**
- * Post new config JS files
- * @param uniminifiedJSStr {String} String containing the unminified JS file
- * @param minifiedJSStr {String} String containing the minified JS file
- * @param notes {String} Comments on this release
- * @param callback {Function} Callback
- */
-FCPClient.prototype.postConfigFiles = function (uniminifiedJSStr, minifiedJSStr, notes, callback) {
-  callback = callback || function () { };
-
-  if (!uniminifiedJSStr) {
-    throw new Error("Missing unminified JS file.");
-  }
-  if (!minifiedJSStr) {
-    throw new Error("Missing minified JS file.");
-  }
-  if (!notes) {
-    throw new Error("Missing notes.");
-  }
-  if (minifiedJSStr.length >= uniminifiedJSStr) {
-    throw new Error("The minified JS file appears to be the same size or larger than the uniminified version.");
-  }
-  var zip = new jsZip();
-  zip.file('gatewayconfig.js', uniminifiedJSStr);
-  zip.file('gatewayconfig.min.js', minifiedJSStr);
-  var data = zip.generate({ base64: false, compression: 'DEFLATE' }),
-    dobj = {
-      'notes': this._formatStringField(notes),
-      'config': rest.data("config.zip", "application/octet-stream", data)
-    };
-
-  this._logEvent("POST", this._constructEndpointURL('gatewayconfig'), dobj);
-
-  rest.post(this._constructEndpointURL('gatewayconfig'), {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200);
-  });
-};
-
-/**
- * Post new code JS files
- * @param codeBuffer {Buffer} The zipped code
- * @param notes {String} Comments on this release
- * @param version {String} Semver version
- * @param latest {Bool|String} Is this the latest? (or invalid?)
- * @param callback {Function} Callback
- */
-FCPClient.prototype.postCodeVersion = function (codeBuffer, notes, version, latest, callback) {
-  callback = callback || function () { };
-
-
-  console.log("postCodeVersion:", version, "bytes:", codeBuffer.length);
-  if (!version || !semver.valid(version)) {
-    console.log("Invalid semver version: ".red, version.toString().yellow);
-    return callback(false);
-  }
-
-  latest = latest.toString();
-
-  var invalid = "false";
-  if (latest === "invalid") {
-    invalid = "true";
-    latest = "false";
-  }
-
-  if (latest === "undefined" || latest === "") {
-    latest = "true";
-  }
-
-  if (this.hostname === FCPClient.environments.prod) {
-    var pre = semver.prerelease(version);
-    if (pre && pre.length > 0) {
-      if (pre[0] !== "rc") {
-        console.log("Cowardly refusing to push to prod a non-rc prerelease version".red);
-        return callback(false);
-      }
-
-      // force prereleases pushed to prod to be invalid
-      latest = "false";
-      invalid = "true";
+    if (!password) {
+      throw new Error("Missing password");
     }
-  }
-
-  var dobj = {
-    'notes': this._formatStringField(notes),
-    'version': version,
-    'latest': latest,
-    'invalid': invalid,
-    'code': rest.data("code.zip", "application/octet-stream", codeBuffer)
-  };
-
-  this._logEvent("POST", this._constructEndpointURL('code'), dobj);
-
-  rest.post(this._constructEndpointURL('code'), {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
-};
-
-/**
- * Get code JS files as zip.
- *
- * Returns a list of {folder, name, buffer} objects where
- * folder is a bool to indicate if it's a folder or not,
- * name is the path of the file, and buffer is the contents
- * if it's not a folder.
- *
- * @param version {String} Semver version
- * @param callback {Function} Callback (err, fileList) => {}
- */
-FCPClient.prototype.getCodePackage = function(version, callback) {
-  callback = callback || function () { };
-
-  var url = this._constructEndpointURL('/code');
-  this._logEvent("GET", url);
-
-  rest.get(url, {
-    username: this.username,
-    password: this.password,
-  }).on('complete', function (data) {
-    if (data.statusCode !== 200) {
-      return callback(new Error("Failed to fetch code versions: " +JSON.stringify(data)));
+    if (!hostname) {
+      throw new Error("Missing hostname");
     }
-
-    // find the id of the version
-    var verdata = data.message.find(v => v.version === version);
-
-    if (!verdata) {
-      return callback(new Error("Could not find version: " + version));
+    if (hostname.indexOf(":/") === -1) {
+      throw new Error("Hostname should look like https://bla.bla.com with no trailing slashes");
     }
-
-    var verurl = this._constructEndpointURL('/code/files/' + verdata.id);
-    this._logEvent("GET", verurl);
-
-    rest.get(verurl, {
-      username: this.username,
-      password: this.password,
-
-      // don't convert to string please
-      decoding: "buffer",
-    }).on('complete', function(data) {
-      if (data instanceof Error) {
-        return callback(data);
-      }
-
-      // Unzip the files
-      var zip = new jsZip(data, {createFolders: true, checkCRC32: true});
-      var files = Object.values(zip.files).map(function(file) {
-        // convert API to simplify consuming code
-        return {
-          folder: file.dir,
-          name: file.name,
-          buffer: file.dir ? null : file.asNodeBuffer(),
-        };
-      });
-      return callback(null, files);
-    });
-  }.bind(this));
-};
-
-/**
- * Post a new default configuration
- * @param configStr {String} JSON object as a string
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.postDefaultConfig = function (configStr, notes, callback) {
-  callback = callback || function () { };
-
-  var latest = 1;
-
-  rest.post(this._constructEndpointURL('defaultconfig'), {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: {
-      'notes': this._formatStringField(notes),
-      'latest': latest.toString(),
-      'config': rest.data("config.js", "application/octet-stream", new Buffer(configStr))
-    }
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
-};
-
-/**
- * Get the default configuration
- * @param configStr {String} JSON object as a string
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.getDefaultConfig = function (callback) {
-  callback = callback || function () { };
-
-  rest.get(this._constructEndpointURL('defaultconfig'), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
-};
-
-
-/**
- * Post a new default configuration for a particular client and container
- * @param sitekey
- * @param container
- * @param configStr
- * @param notes
- * @param callback
- */
-FCPClient.prototype.postDefaultConfigForSiteContainer = function (sitekey, container, configStr, notes, callback) {
-  callback = callback || function () { };
-
-
-  var dobj = {
-    'notes': this._formatStringField(notes),
-    'config': rest.data("config.js", "application/javascript", new Buffer(configStr))
-  };
-
-  this._logEvent("POST", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs'), dobj);
-
-  rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs'), {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message);
-  });
-};
-
-/**
- * set a config tag for a particular client and container
- * @param sitekey
- * @param container
- * @param tag
- * @param notes
- * @param callback
- */
-FCPClient.prototype.setConfigForSiteContainer = function (sitekey, container, tag, notes, callback) {
-  callback = callback || function () { };
-
-
-  var dta = {
-    'notes': this._formatStringField(notes)
-  };
-
-  rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/' + tag), {
-    username: this.username,
-    password: this.password,
-    data: dta
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message, sitekey, container, tag);
-  });
-};
-
-/**
- * Get the active container config for a particular site and container
- * @param sitekey
- * @param container
- * @param callback
- */
-FCPClient.prototype.listActiveConfigForSiteContainer = function (sitekey, container, callback) {
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs') + '?active=true');
-
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs') + '?active=true', {
-    username: this.username,
-    password: this.password,
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, data.message, sitekey, container);
-  });
-};
-
-/**
- * Get a container config json for a particular site and container
- * @param sitekey
- * @param container
- * @param callback
- */
-FCPClient.prototype.getConfigForSiteContainer = function (sitekey, container, tag, callback) {
-  var url = this._constructEndpointURL('/sites/' + sitekey + '/containers/' + container + '/configs/files/' + tag);
-  this._logEvent("GET", url);
-
-  rest.get(url, {
-    username: this.username,
-    password: this.password,
-  }).on('complete', function (data) {
-    callback(data, sitekey, container);
-  });
-};
-
-/**
- * List the clients
- * @param searchterm
- * @param cb
- */
-FCPClient.prototype.listClients = function (callback) {
-  this._logEvent("GET", this._constructEndpointURL('clients'));
-  rest.get(this._constructEndpointURL('clients'), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data.statusCode == 200) {
-      for (var i = 0; i < data.message.length; i++) {
-        clients['_' + data.message[i].id] = data.message[i];
-      }
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Look up a client by a search term
- * @param searchterm
- * @param cb
- */
-FCPClient.prototype.lookupClient = function (searchterm, callback) {
-  this._logEvent("GET", this._constructEndpointURL('clients') + "?search=" + encodeURIComponent(searchterm));
-  rest.get(this._constructEndpointURL('clients') + "?search=" + encodeURIComponent(searchterm), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data && typeof data.message == "string") {
-      data.message = [];
-    }
-    if (!data) {
-      data = {
-        statusCode: 200,
-        message: []
-      }
-    }
-    this.listSites(function (success, results) {
-      if (!success) {
-        callback(true, { clients: data.message, sites: [] });
-      } else {
-        var finalSitesList = [];
-        for (var i = 0; i < results.length; i++) {
-          var st = results[i];
-          if (st.name.toLowerCase().indexOf(searchterm.toLowerCase().trim()) > -1) {
-            finalSitesList.push(st);
-          }
-        }
-        callback(true, { clients: data.message, sites: finalSitesList });
-      }
-    }.bind(this)
-    );
-  }.bind(this));
-};
-
-/**
- * Look up a client by its ID
- * @param searchterm
- * @param cb
- */
-FCPClient.prototype.getClient = function (id, callback) {
-  if (clients['_' + id]) {
-    process.nextTick(function () {
-      callback(true, clients['_' + id]);
-    });
-  } else {
-    this._logEvent("GET", this._constructEndpointURL('clients/' + id));
-    rest.get(this._constructEndpointURL('clients/' + id), {
-      username: this.username,
-      password: this.password
-    }).on('complete', function (data) {
-      if (data.statusCode == 200) {
-        clients['_' + id] = data.message;
-      }
-      callback(data.statusCode == 200, !!data ? data.message : null);
-    });
-  }
-};
-
-
-/**
- * Reset a client
- * @param callback {Function} Callback
- */
-FCPClient.prototype.reset = function (callback) {
-  this._logEvent("POST", this._constructEndpointURL('reset/'));
-  rest.post(this._constructEndpointURL('reset'), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    console.log("Reset result: ", data);
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Create a client
- * @param id {Number} Client ID. 0 if auto-assign
- * @param name {String} Client name
- * @param metadata {String} Meta data
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.makeClient = function (id, name, metadata, notes, callback) {
-  callback = callback || function () { };
-
-  var dta = {
-    'notes': this._formatStringField(notes),
-    'name': this._formatStringField(name, 127),
-    'metadata': this._formatStringField(metadata)
-  };
-  if (dta.notes.length === 0) {
-    throw new Error("Missing notes field on make client request.");
-  }
-  if (dta.name.length === 0) {
-    throw new Error("Missing name field on make client request.");
-  }
-  if (dta.metadata.length === 0) {
-    throw new Error("Missing metadata field on make client request.");
-  }
-  if (id > 0) {
-    dta.client_id = id;
-  }
-  this._logEvent("POST", this._constructEndpointURL('clients'), dta);
-  rest.post(this._constructEndpointURL('clients'), {
-    username: this.username,
-    password: this.password,
-    data: dta
-  }).on('complete', function (data) {
-    if (data.statusCode == 200) {
-      clients['_' + data.message.id] = data.message;
-      clientCreated.emit('created');
-      clientCreated.emit('created' + data.message.id);
-      sites['_' + data.message.id] = [];
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Create a client
- * @param id {Number} Client ID. 0 if auto-assign
- * @param name {String} Client name
- * @param metadata {String} Meta data
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.makeClientIfNotExist = function (id, name, metadata, notes, callback) {
-  callback = callback || function () {
-
-  };
-  var args = arguments;
-
-  if (!id) {
-    throw new Error("Invalid client ID");
-  } else {
-    this.getClient(id, function (_id, _name, _metadata, _notes, _callback, ctx) {
-      return function (success, client) {
-        if (!success || !client) {
-          ctx.makeClient(_id, _name, _metadata, _notes, _callback);
-        } else {
-          callback(true, client);
-        }
-      };
-    }(id, name, metadata, notes, callback, this));
-  }
-};
-
-/**
- * Make a new site
- * @param sitekey {String} The site key
- * @param client_id {Number} The client ID
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.makeSite = function (sitekey, client_id, alias, notes, callback) {
-  if (!callback || typeof callback !== "function") {
-    callback = notes;
-    notes = alias;
-    alias = sitekey.toLowerCase().replace(/ /g, '');
+    this.username = username;
+    this.password = password;
+    this.hostname = hostname;
+    this.__log = [];
   }
 
-  var ctx = this;
-  // callback = callback || function () {
-  //   };
-  var dta = {
-    'notes': this._formatStringField(notes),
-    'name': sitekey.toLowerCase().replace(/ /g, ''),
-    'alias': alias || sitekey.toLowerCase().replace(/ /g, ''),
-    'client_id': client_id
-  };
-  this._logEvent("POST", this._constructEndpointURL('sites'), dta);
-  rest.post(this._constructEndpointURL('sites'), {
-    username: this.username,
-    password: this.password,
-    data: dta
-  }).on('complete', function (data) {
-    if (data.statusCode == 200) {
-      if (!sites['_' + client_id]) {
-        sites['_' + client_id] = [{ name: sitekey }];
-      } else {
-        sites['_' + client_id].push({ name: sitekey });
-      }
-      // Make containers automatically
-      var didstaging = false,
-        didproduction = false,
-        checker = function () {
-          if (didstaging && didproduction) {
-            callback(data.statusCode == 200, !!data ? data.message : null);
-          }
-        };
-      ctx.getContainersForSitekey(sitekey, function (success, result) {
-        if (!success) {
-          console.log("Failed to get containers for site key: ", sitekey, result);
-        } else {
-          for (var b = 0; b < result.length; b++) {
-            if (result[b].name == "production") {
-              didproduction = true;
-            }
-            if (result[b].name == "staging") {
-              didstaging = true;
-            }
-          }
-          if (!didstaging) {
-            ctx.makeContainer(sitekey, "staging", client_id, notes, function (success, ndata) {
-              if (!success) {
-                throw new Error("Did not successfully create staging container.");
-              } else {
-                didstaging = true;
-                checker();
-              }
-            });
-          }
-          if (!didproduction) {
-            ctx.makeContainer(sitekey, "production", client_id, notes, function (success, ndata) {
-              if (!success) {
-                throw new Error("Did not successfully create production container.");
-              } else {
-                didproduction = true;
-                checker();
-              }
-            });
-          }
-          if (didstaging && didproduction) {
-            checker();
-          }
-        }
-      });
-
-    } else {
-      callback(data.statusCode == 200, !!data ? data.message : null);
-    }
-  });
-};
-
-/**
- * Make a new container
- * @param sitekey {String} The site key
- * @param container {String} The container
- * @param client_id {Number} The client ID
- * @param notes {String} Notes
- * @param callback {Function} Callback
- */
-FCPClient.prototype.makeContainer = function (sitekey, container, client_id, notes, callback) {
-  if (container.length > 45) {
-    container = container.substr(0, 45).toLowerCase().replace(/[ \t\r\n]/g, '');
-  }
-  var dta = {
-    'notes': this._formatStringField(notes),
-    'name': this._formatStringField(container.toLowerCase(), 45),
-    'client_id': client_id
-  };
-
-  this._logEvent("POST", this._constructEndpointURL('sites/' + sitekey + '/containers'), dta);
-  rest.post(this._constructEndpointURL('sites/' + sitekey + '/containers'), {
-    username: this.username,
-    password: this.password,
-    data: dta
-  }).on('complete', function (data) {
-    if (data.statusCode != 200) {
-      console.log("Failed making container " + container + " for sitekey " + sitekey + " for client ID " + client_id + ": ", data);
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Does a particular site key exist?
- * @param sitekey {String} The site key
- * @param callback {Function} Callback. Arguments: success {Boolean}, exists {Boolean}, client {Number}
- */
-FCPClient.prototype.doesSiteKeyExist = function (sitekey, callback) {
-  sitekey = sitekey || '';
-  if (sitekey.trim().length == 0) {
-    throw new Error("Invalid sitekey");
-  }
-  sitekey = sitekey.trim().replace(/[ \t\n\r]/g, '').toLowerCase();
-  if (sitekey.length > 45) {
-    sitekey = sitekey.substr(0, 45);
-  }
-  callback = callback || function () { };
-
-  this.listSites(function (success, info) {
-    if (!success) {
-      callback(success, false);
-    } else {
-      if (!info) {
-        info = [];
-      }
-      var didFind = false;
-      for (var i = 0; i < info.length; i++) {
-        if (info[i].name == sitekey) {
-          // found it!
-          didFind = true;
-          callback(true, true, info[i]);
-        }
-      }
-      if (!didFind) {
-        callback(true, false);
-      }
-    }
-  });
-};
-
-/**
- * List all sites
- * @param callback {Function} Callback
- */
-FCPClient.prototype.listSites = function (callback) {
-  callback = callback || function () {
-
-  };
-  this._logEvent("GET", this._constructEndpointURL('sites'));
-  rest.get(this._constructEndpointURL('sites'), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data && data.statusCode == 404) {
-      data.message = [];
-      data.statusCode = 200;
-    }
-    if (data && data.message && typeof (data.message) == typeof ([])) {
-      for (var i = 0; i < data.message.length; i++) {
-        var ste = data.message[i],
-          clientid = ste.client_id;
-        if (!sites['_' + clientid]) {
-          sites['_' + clientid] = [];
-        }
-        sites['_' + clientid].push(ste);
-      }
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-
-};
-
-/**
- * Promote product configs from staging to production; will not promote feedback
- * @param sitekey
- * @param notes
- * @param callback
- */
-FCPClient.prototype.promoteStgToProd = function (sitekey, notes, products, callback) {
-  var ctx = this,
-    dp,
-    dt,
-    ct;
-  callback = callback || function () {
-
-  };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/staging'));
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/staging'), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data.statusCode != 200) {
-      callback(false, 'Failed GET on /sites/' + sitekey + '/containers/staging');
-    } else if (data.message && data.message.products && data.message.tags && data.message.config_tag) {
-      dp = data.message.products;
-      dt = data.message.tags;
-      ct = data.message.config_tag;
-
-      var queue = async.queue(function (task, callback) {
-        callback();
-      }, 1);
-      queue.drain = function () {
-      };
-
-      ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct));
-      rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/configs/' + ct), {
-        username: ctx.username,
-        password: ctx.password,
-        data: {
-          notes: ctx._formatStringField(notes)
-        }
-      }).on('complete', function (data) {
-        if (data.statusCode != 200) {
-          callback(false, "Failed to promote container config: " + data.message);
-        } else {
-          callback(true, "Successfully promoted container config: " + sitekey + '/production');
-        }
-
-        for (var i = 0, len = dp.length; i < len; i++) {
-          if (products.indexOf(dp[i]) > -1) {
-            queue.push({ name: "task" + i }, function (prdct, tag) {
-              return function () {
-                ctx._logEvent("POST", ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag));
-                rest.post(ctx._constructEndpointURL('/sites/' + sitekey + '/containers/production/products/' + prdct + '/' + tag), {
-                  username: ctx.username,
-                  password: ctx.password,
-                  data: {
-                    notes: ctx._formatStringField(notes)
-                  }
-                }).on('complete', function (data) {
-                  if (data.statusCode != 200) {
-                    callback(false, "Failed to promote: " + data.message);
-                  } else {
-                    callback(true, "Successfully promoted product config: " + data.message.product);
-                  }
-                });
-              }
-            }(dp[i], dt[i]));
-          }
-        }
-      });
-    } else {
-      callback(false, "Failed to promote. One of the following was missing from message: products, tags, config_tag. " + data.message);
-    }
-  });
-};
-
-/**
- * List all the containers for a site key
- * @param sitekey {String} site key
- * @param callback {Function}
- */
-FCPClient.prototype.getContainersForSitekey = function (sitekey, callback) {
-  callback = callback || function () {
-
-  };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers'));
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers'), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    if (data.statusCode == 404) {
-      data.statusCode = 200;
-      data.message = [];
-    }
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-
-};
-
-/**
- * Get container info for a site key
- * @param sitekey {String} site key
- * @param containername {String} container name
- * @param callback {Function}
- */
-FCPClient.prototype.getContainerForSitekey = function (sitekey, containername, callback) {
-  callback = callback || function () { };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-
-  this._logEvent("GET", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + containername));
-  rest.get(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + containername), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * List the products for a container
- * @param containerid {Number} Container ID
- * @param callback {Function} Callback
- */
-FCPClient.prototype.listProductsForContainer = function (sitekey, container, callback) {
-  callback = callback || function () { };
-
-  this._logEvent("GET", this._constructEndpointURL('sites/' + siteky + '/container/' + container));
-
-  rest.get(this._constructEndpointURL('sites/' + siteky + '/container/' + container), {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-
-};
-
-/**
- * Get publishers info for a site key
- * @param sitekey {String} site key
- * @param callback {Function}
- */
-FCPClient.prototype.getPublishersForSitekey = function (sitekey, callback) {
-  callback = callback || function () { };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-
-  var URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/');
-
-  this._logEvent("GET", URL);
-  rest.get(URL, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * Remove a publisher for a site key
- * @param sitekey {String} site key
- * @param publisherId {String} publisher id to remove
- * @param callback {Function}
- */
-FCPClient.prototype.removePublisherForSitekey = function (sitekey, publisherId, callback) {
-  callback = callback || function () { };
-  sitekey = sitekey || '';
-  sitekey = sitekey.toLowerCase().trim();
-  try {
-    publisherId = parseInt(publisherId);
-  } catch (ex) {
-    publisherId = null;
+  static get environmentShort () { 
+    return ["dev", "qa", "qa2", "stg", "prod", "local", "local-docker", "qfed", "ttec"]; 
   }
 
-  var URL = this._constructEndpointURL('/sites/' + sitekey + '/publishers/' + publisherId);
-
-  this._logEvent("DELETE", URL);
-  rest.del(URL, {
-    username: this.username,
-    password: this.password
-  }).on('complete', function (data) {
-    callback(data.statusCode == 200, !!data ? data.message : null);
-  });
-};
-
-/**
- * List the site keys for a client
- * @param clientid {Number} Client ID
- * @param callback {Function} Callback
- */
-FCPClient.prototype.listSitesForClient = function (clientid, callback) {
-  callback = callback || function () { };
-
-  if (sites['_' + clientid]) {
-    process.nextTick(function () {
-      callback(true, sites['_' + clientid]);
-    });
-  } else {
-    this._logEvent("GET", this._constructEndpointURL('sites?client_id=' + clientid));
-    rest.get(this._constructEndpointURL('sites?client_id=' + clientid), {
-      username: this.username,
-      password: this.password
-    }).on('complete', function (data) {
-      if (data && data.statusCode == 404 && data.message == "No sites found") {
-        data.message = [];
-        data.statusCode = 200;
-      }
-      if (data.statusCode == 200) {
-        sites['_' + clientid] = data.message;
-      }
-      callback(data.statusCode == 200, !!data ? data.message : null);
-    });
-  }
-};
-
-/**
- * Push a product for a customer
- * @param clientid {Number}
- * @param sitekey {String}
- * @param environment {String} eg: staging/production
- * @param product {String}
- * @param snippetConfig {String} The config snippet
- * @param fileBuffer {Buffer} The contents of the ZIP containing all files
- * @param notes {String} Any notes
- * @param callback
- * @param no_invalidation {Boolean} (Optional). Skip invalidation
- */
-FCPClient.prototype.pushCustomerConfigForProduct = function (clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback, no_invalidation, jsonconfig) {
-  sitekey = sitekey.trim().toLowerCase();
-  environment = environment.trim().toLowerCase();
-  product = product.trim().toLowerCase();
-  callback = callback || function () { };
-
-  if (product.toLowerCase().trim() == "replay") {
-    throw new Error("Replay is not a valid product code! Use record instead!");
-  }
-
-  var dobj = {
-    'notes': this._formatStringField(notes),
-    'config': rest.data("config.js", "application/javascript", new Buffer(snippetConfig)),
-    'file': rest.data("files.zip", "application/octet-stream", fileBuffer)
-  };
-
-  if (jsonconfig) {
-    dobj.json = rest.data("config.json", "application/json", new Buffer(jsonconfig));
-  }
-
-  if (no_invalidation) {
-    dobj.no_invalidation = 'true';
-  }
-  this._logEvent("POST", this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), dobj);
-  rest.post(this._constructEndpointURL('/sites/' + sitekey + '/containers/' + environment + '/products/' + product), {
-    multipart: true,
-    username: this.username,
-    password: this.password,
-    data: dobj
-  }).on('complete', function (data) {
-    if (data.message.trim && data.message.trim().toLowerCase().indexOf("site not found") > -1) {
-      console.log("Site was missing. Attempting to create a site called".yellow, sitekey.magenta, "for client".yellow, clientid, "...".yellow);
-      this.makeSite(sitekey, clientid, "Making site " + sitekey + " for client " + clientid + " in response to a pushCustomerConfigForProduct", function (success, result) {
-        if (success) {
-          this.pushCustomerConfigForProduct(clientid, sitekey, environment, product, snippetConfig, fileBuffer, notes, callback);
-        } else {
-          console.log("Could not create site: ".red + sitekey.red, result);
-        }
-      }.bind(this));
-    } else {
-      callback(data.statusCode == 200, data.message);
-    }
-  }.bind(this));
-};
-
-FCPClient.environmentShort = [
-  "dev", "qa", "qa2", "stg", "prod", "local"
-];
-
-/**
- * Defines environments
- * @type {{}}
- */
-FCPClient.environments = {
-  "local": "http://localhost:3001",
-  "dev": "https://dev-fcp.foresee.com",
-  "qa": "https://qa-fcp.foresee.com",
-  "qa2": "https://qa2-fcp.foresee.com",
-  "stg": "https://stg-fcp.foresee.com",
-  "prod": "https://fcp.foresee.com"
-};
-
-/**
- * Front end environments
- * @type {{local: string, dev: string, qa: string, qa2: string, stg: string, prod: string}}
- */
-FCPClient.frontEndEnvironments = {
-  "local": "http://localhost:3001",
-  "dev": "https://dev-gateway.foresee.com",
-  "qa": "https://qa-gateway.foresee.com",
-  "qa2": "https://qa2-gateway.foresee.com",
-  "stg": "https://stg-gateway.foresee.com",
-  "prod": "https://gateway.foresee.com"
-};
-
-/**
- * Ask the user for credentials and notes if appropriate
- * @param donotes {Boolean} Ask for notes?
- * @param cb {Function} Callback
- */
-FCPClient.promptForFCPCredentials = function (options, cb) {
-  var home,
-    ev,
-    username,
-    password,
-    notes,
-    environment,
-    schema = {
-      properties: {}
-    };
-
-  // Read FCP credentials from ~/env.json, if it exists
-  try {
-    home = process.env[(process.platform == 'win32') ? 'USERPROFILE' : 'HOME'];
-    ev = JSON.parse(fs.readFileSync(home + '/env.json').toString());
-    username = ev.FCP_USERNAME;
-    password = ev.FCP_PASSWORD;
-    notes = ev.FCP_NOTES;
-    environment = ev.FCP_ENVIRONMENT;
-  } catch (e) {
-  }
-  // Read FCP credentials from environment variables, if they exist
-  if (!username) {
-    try {
-      username = process.env.FCP_USERNAME;
-      password = process.env.FCP_PASSWORD;
-      notes = process.env.FCP_NOTES;
-      environment = process.env.FCP_ENVIRONMENT;
-    } catch (e) {
-    }
-  }
-
-  if (options.clientId) {
-    schema.properties.clientId = {
-      required: true,
-      type: 'string'
+  static get fcpUrls () {
+    return {
+      "local": "http://localhost:3001",
+      "dev": "https://dev-fcp.foresee.com",
+      "qa": "https://qa-fcp.foresee.com",
+      "qa2": "https://qa2-fcp.foresee.com",
+      "stg": "https://stg-fcp.foresee.com",
+      "prod": "https://fcp.foresee.com",
+      "qfed": "http://qfed-xm-dkrsvc1.lab.local:3001",
+      "ttec": "https://eex-cert-brain.ttecfed.com:3010",
+      "local-docker": "http://localhost:3001"
     };
   }
-  if (options.notes && !notes) {
-    schema.properties.notes = {
-      required: true
+
+  static get gatewayUrls () {
+    return {
+      "local": "http://localhost:3001",
+      "dev": "https://dev-gateway.foresee.com",
+      "qa": "https://qa-gateway.foresee.com",
+      "qa2": "https://qa2-gateway.foresee.com",
+      "stg": "https://stg-gateway.foresee.com",
+      "prod": "https://gateway.foresee.com",
+      "qfed": "https://qfed-xm-sdkweb1.lab.local",
+      "ttec": "https://eex-cert-gateway.ttecfed.com",
+      "local-docker": "http://localhost:3003"
     };
   }
-  if (!username || !password) {
-    console.log("Please enter your FCP credentials (no @ is needed). ".cyan);
+
+  static get fcpRef() { return fcpRef; }
+
+  static get fcpValidEndpoints() {
+    // TODO: '.reduce((acc, val) => acc.concat(val), [])' can be replaced with '.flat()' once we are able to bump node up to/past 11
+    return Object.keys(fcpRef)
+      .map(action => Object.keys(fcpRef[action]))
+      .reduce((acc, val) => acc.concat(val), []);
   }
-  if (!username) {
+
+  /**
+   * Ask the user to set their credentials
+   */
+  static async setFCPCredentials () {
+    const schema = { properties: {} };
+    
     schema.properties.username = {
       required: true
     };
-  }
-  if (!password) {
+    
     schema.properties.password = {
       hidden: true,
       required: true
     }
-  }
-  if (options.latest) {
-    schema.properties.latest = {
-      required: true,
-      type: 'string',
-      pattern: '^(true|false|invalid)$'
-    };
-    console.log("Latest: true/false/invalid.".yellow);
-  }
-  if (!options.disableEnv && typeof (environment) == "undefined") {
-    schema.properties.environment = {
-      required: true,
-      type: 'integer',
-      message: '0 = dev, 1 = QA, 2 = QA2, 3 = prod, 4 = localhost:3001'
-    };
-    console.log("For environment, enter a number: " + "0 = dev".yellow + ", " + "1 = QA".magenta + ", " + "2 = QA2".magenta + ", " + "3 = stg".green + ", " + "4 = prod".blue + ", " + "5 = localhost:3001");
-  }
-
-  prompt.start();
-  prompt.get(schema, function (err, result) {
-    if (!err) {
-      result.username = result.username || username;
-      result.password = result.password || password;
-      result.notes = result.notes || notes;
-
-      if (result.username.indexOf('@') == -1) {
-        result.username = result.username.trim() + '@aws.foreseeresults.com';
-      }
-      if (typeof (environment) != "undefined") {
-        result.environment = environment;
-      }
-      if (typeof (result.latest) == "undefined") {
-        result.latest = true;
-      }
-      result.env = result.environment;
-
-      if (result.env >= 0 && result.env <= 5) {
-        // dev, qa, qa2, stg, prod, local
-        var es = FCPClient.environmentShort[result.env];
-        result.environment = FCPClient.environments[es];
-        result.frontEndEnvironment = FCPClient.frontEndEnvironments[es];
-      } else if (!options.disableEnv) {
-        throw new Error("Invalid environment.");
-      }
-      cb(result);
+    
+    await prompt.start();
+    const result = await prompt.get(schema);
+    const { username, password } = result;
+    
+    if (!username) {
+      throw new Error('Please provide a valid username.')
     }
-  });
+
+    if (!password) {
+      throw new Error('Please provide a valid password.')
+    }
+
+    let envObj = {}
+    try {
+      envObj = JSON.parse((await fsReadFile(envFilePath)).toString());
+    } catch (e) {
+      // console.log(`error parsing "${home}/env.json": ${e}`);
+    }
+
+    envObj.FCP_USERNAME = username
+    envObj.FCP_PASSWORD = password
+
+    const writeStream = fs.createWriteStream(envFilePath);
+    writeStream.write(JSON.stringify(envObj))
+    writeStream.end()
+
+    console.log(`credentials set in the ${envFilePath} file`)
+  }
+
+  /**
+   * Ask the user for credentials
+   * @param {Object} options
+   * This could include:
+   *  - {String} username
+   *  - {String} password
+   */
+  static async getFCPCredentials (options = {}) {
+    let env;
+    const schema = { properties: {} };
+    // Read FCP credentials from passed in, ~/env.json or environment variables, if any exist
+    try {
+      env = JSON.parse((await fsReadFile(envFilePath)).toString());
+    } catch (e) {
+      // console.log(`error parsing "${home}/env.json": ${e}`);
+      env = {};
+    }
+    options.username = options.username || env.FCP_USERNAME || process.env.FCP_USERNAME;
+    options.password = options.password || env.FCP_PASSWORD || process.env.FCP_PASSWORD;
+    
+    if (!options.username || !options.password) {
+      console.log(chalk.cyan("Please enter your FCP credentials (no @ is required). "));
+      
+      schema.properties.username = {
+        required: true
+      };
+      
+      schema.properties.password = {
+        hidden: true,
+        required: true
+      }
+      
+      await prompt.start();
+      const result = await prompt.get(schema);
+      Object.assign(options, result);
+    }
+    
+    if (!~options.username.indexOf('@')) {
+      options.username = options.username.trim() + '@aws.foreseeresults.com';
+    }
+    
+    return options;
+  }
+
+  /**
+   * Ask the user to set their environment
+   */
+  static async setFCPEnvironment () {
+    console.log('valid environments: prod, stg, qa, qa2, dev, local')
+
+    const schema = { properties: {} };
+    
+    schema.properties.environment = {
+      required: true
+    };
+    
+    await prompt.start();
+    const result = await prompt.get(schema);
+    const { environment } = result
+    
+    const validEnvironments = ['prod', 'stg', 'qa', 'qa2', 'dev', 'local']
+
+    if (!environment || !validEnvironments.includes(environment)) {
+      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev, local)')
+    }
+
+    let envObj = {}
+    try {
+      envObj = JSON.parse((await fsReadFile(envFilePath)).toString());
+    } catch (e) {
+      // console.log(`error parsing "${home}/env.json": ${e}`);
+    }
+
+    envObj.FCP_ENVIRONMENT = environment
+
+    const writeStream = fs.createWriteStream(envFilePath);
+    writeStream.write(JSON.stringify(envObj))
+    writeStream.end()
+
+    console.log(`environment set in the ${envFilePath} file`)
+  }
+  
+  /**
+   * Ask the user for environment
+   * @param {Object} options
+   * This could include:
+   *  - {String} environment: dev, qa, qa2, stg, prod, local
+   */
+  static async getFCPEnvironment (options = {}) {
+    let env;
+    const schema = {properties: {}};
+
+    // Read FCP environment from passed in options, ~/env.json or environment variables, if any exist
+    try {
+      env = JSON.parse((await fsReadFile(envFilePath)).toString());
+    } catch (e) {
+      env = {};
+    }
+    options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
+    
+    if (!options.env) {
+      console.log('Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)');
+      
+      schema.properties.env = {
+        required: true,
+        // pattern: /^\w+$/,                  // Regular expression that input must be valid against.
+        type: 'string',
+        message: 'Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)'
+      };
+
+      await prompt.start();
+      const result = await prompt.get(schema);
+      Object.assign(options, result);
+    }
+
+    let validEnv = this.environmentShort.includes(options.env);
+    
+    if (validEnv) {
+      options.fcpUrl = this.fcpUrls[options.env];
+      options.gatewayUrl = this.gatewayUrls[options.env];
+    } else {
+      throw new Error("Invalid environment.");
+    }
+    
+    return options;
+  }
+
+  /**
+   * Return a fully qualified URL for an endpoint
+   * @param {String} endpoint
+   * @private
+   */
+  __constructEndpointURL (endpoint) {
+    if (endpoint.substr(0, 1) == "/") {
+      endpoint = endpoint.substr(1);
+    }
+    return this.hostname + "/" + endpoint;
+  }
+
+  /**
+   * Log an event
+   * @private
+   */
+  __logEvent () {
+    let string = "";
+    [...arguments].forEach(arg => {
+      try {
+        string += JSON.stringify(arg, (element, value) => {
+          return typeof value === typeof {} && value.type && value.type === "Buffer" ? "[BUF]" : value;
+        })
+      } catch (e) {}
+      string += ' ';
+    });
+    string = string.slice(0,-1);
+    this.__log.push(string);
+  }
+
+  async callFCP (action, endpoint, options = {}) {
+    const basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
+    const testUrl = `${this.hostname}/user/groups`;
+    const testResult = await fetch(testUrl, { method: 'GET', headers: basicAuth });
+    const testResultMessage = testResult && testResult.statusCode === 200 && testResult.message;
+    const fcpGroups = Array.isArray(testResultMessage.groups) &&
+      testResultMessage.groups.filter(group => group.substr(0,4) === "fcp_");
+    if(!fcpGroups) {
+      throw new Error(JSON.stringify(testResult));
+    }
+    
+    // TODO: add a better error message so they know what came in wrong
+    if(!fcpRef[action] || !fcpRef[action][endpoint]) throw new Error(`Unknown choice combination: ${action} ${endpoint}`);
+    const { type, urlFrag, required, multipart } = fcpRef[action][endpoint];
+
+    if (type === "GET") options.disableNotes = true;
+    
+    const input = await this.getRequiredOptions(options, required);
+    
+    if (input.error) throw new Error(input.error);
+    
+    let queryString = "";
+    
+    if (type === "GET") {
+      queryString += "?"
+      
+      if (options.search && Array.isArray(options.search)) options.search = options.search.join();
+      
+      const paramKeys = Object.keys(input).filter(key => !!fcpQueryParams[key]);
+      
+      paramKeys.forEach(key => queryString += fcpQueryParams[key]+"="+input[key]+"&")
+    }
+
+    const url = this.__constructEndpointURL(
+      urlFrag
+        .replace(':clientId',input.client_id)
+        .replace(':site',input.site)
+        .replace(':container',input.container)
+        .replace(':configTag',input.config_tag)
+        .replace(':product',input.product)
+        .replace(':codeId',input.code_id)
+        .replace(':md5',input.module_md5)
+    ) + queryString;
+    
+    
+    console.log(chalk.magenta('Making FCP Call to'),url);
+    
+    let formHeaders = {};
+    
+    let body = paramify(input);
+    
+    if (multipart) {
+      body = formify(input);
+      formHeaders = body.getHeaders();
+    }
+    
+    const requestOptions = {
+      method: type,
+      headers: { ...formHeaders, ...basicAuth }
+    };
+    
+    if (type != "GET") requestOptions.body = body;
+
+    this.__logEvent(type, url);
+    
+    try {
+      const result = await fetch(url, requestOptions);
+      
+      if (!options.silent) logResults(endpoint.toLowerCase(), fancyPrint, result, ['create','set'].includes(action), options.product);
+      
+      if (type === "GET" && (url.includes('/code/files/') || url.includes('/modules/files/'))) {
+        const zip = new jsZip(Buffer.from(result), {createFolders: true, checkCRC32: true});
+        const files = Object.values(zip.files).map(function(file) {
+          return {
+            folder: file.dir,
+            name: file.name,
+            buffer: file.dir ? null : file.asNodeBuffer(),
+          };
+        });
+        return files;
+      }
+      
+      return result;
+      
+    } catch (err) {
+      return err;
+    }
+
+  }
+
+  /**
+   * Ask the user for credentials and notes if appropriate
+   * @param {Options} options
+   * This could include:
+   *  - {String} notes
+   *  - {Boolean} disableNotes - If you want to not require notes
+   *  - {Number} clientId
+   *  - {String} sitekey
+   *  - {String} container
+   *  - {String} name
+   *  - {String} metadata
+   *  - {String} configTag
+   *  - {String} vendorCode
+   *  - {String} prereleaseCode
+   *  - {true/false/invalid} latest - If you want to pass that value on
+   * As well as any other values you just want to pass on (anything not listed will be included in return)
+   */
+  async getRequiredOptions (options = {}, required = []) {
+    if(options.doNotPrompt) return options;
+
+    const schema = { properties: {} };
+
+    if (!options.disableNotes && typeof (options.notes) === "undefined") {
+      schema.properties.notes = {
+        required: true
+      };
+    }
+    
+    const requiredString = {
+      required: true,
+      type: "string",
+    };
+    
+    if(!options.client_id && options.clientId) options.client_id = options.clientId;
+    if (required.includes('client_id') && !options.client_id) {
+      schema.properties.client_id = {
+        type: 'integer',
+        message: chalk.yellow("Client ID should be a non-zero integer."),
+      }
+    }
+    if(!options.clientId && options.client_id) options.clientId = options.client_id;
+    if (required.includes('clientId') && !options.clientId) {
+      schema.properties.clientId = {
+        required: true,
+        type: 'integer',
+        message: chalk.yellow("Client ID should be a non-zero integer."),
+      }
+    }
+    
+    if(!options.site && options.site_name) options.site = options.site_name;
+    if (required.includes('site') && !options.site) {
+      schema.properties.site = {...requiredString};
+    }
+    
+    if (required.includes('container') && !options.container) {
+      schema.properties.container = {...requiredString};
+    }
+    
+    if (required.includes('product') && !options.product) {
+      schema.properties.product = {...requiredString};
+    }
+    
+    if (required.includes('name') && !options.name) {
+      schema.properties.name = {...requiredString};
+    }
+    
+    if (required.includes('metadata') && !options.metadata) {
+      const message = "Metadata can be the website URL, client contact name, other trademarks, etc. This is useful for searching.";
+      schema.properties.metadata = {...requiredString, message};
+    }
+    
+    if(!options.configTag && options.config_tag) options.configTag = options.config_tag;
+    if (required.includes('configTag') && !options.configTag) {
+      schema.properties.configTag = {...requiredString};
+    }
+    
+    if (required.includes('configStr') && !options.configStr) {
+      const message = "This is the javascript config you want to upload, stringified";
+      schema.properties.configStr = {...requiredString, message};
+    }
+    
+    if(!options.vendorCode && options.vendor_code) options.vendorCode = options.vendor_code;
+    if (required.includes('vendorCode') && !options.vendorCode) {
+      const message = "8 char limit, accepted chars A-Z/a-z";
+      schema.properties.vendorCode = {...requiredString, message};
+    }
+    
+    if(!options.prereleaseCode && options.prerelease_code) options.prereleaseCode = options.prerelease_code;
+    if (required.includes('prereleaseCode') && !options.prereleaseCode) {
+      const message = "8 char limit, accepted chars A-Z/a-z"
+      schema.properties.prereleaseCode = {...requiredString, message};
+    }
+    if(!options.codeId && options.code_id) options.codeId = options.code_id;
+    if (required.includes('codeId') && !options.codeId) {
+      schema.properties.codeId = {
+        required: true,
+        type: 'integer',
+        message: chalk.yellow("Code ID should be a non-zero integer."),
+      }
+    }
+    if(!options.moduleName && options.module_name) options.moduleName = options.module_name;
+    
+    if (required.includes('moduleName') && !options.moduleName) {
+      schema.properties.moduleName = {...requiredString};
+    }
+    
+    if(!options.moduleMD5 && options.module_md5) options.moduleMD5 = options.module_md5;
+    if (required.includes('moduleMD5') && !options.moduleMD5) {
+      schema.properties.moduleMD5 = {...requiredString};
+    }
+    
+    if (required.includes('version') && !options.version) {
+      schema.properties.version = {...requiredString};
+    }
+    
+    if (required.includes('latest') && typeof options.latest === "undefined") {
+      schema.properties.latest = {type: "string", pattern: '^(true|false|invalid)$'};
+      console.log(chalk.yellow("Latest: true/false/invalid."));
+    }
+    
+    if (required.includes('duplicates') && typeof options.duplicates != "boolean") {
+      schema.properties.duplicates = { type: "boolean"};
+    }
+
+    if (required.includes('deleted') && typeof options.deleted != "boolean") {
+      schema.properties.deleted = { type: "boolean"};
+    }
+
+    if (required.includes('active') && typeof options.active != "boolean") {
+      schema.properties.active = { type: "boolean"};
+    }
+
+    if (required.includes('inactive') && typeof options.inactive != "boolean") {
+      schema.properties.inactive = { type: "boolean"};
+    }
+
+    if (required.includes('search') && typeof options.search === "undefined") {
+      schema.properties.search = {type: "string"};
+    }
+
+    const fileMessage = chalk.grey("This is the relative or absolute path to the file, including the extension");
+    if (required.includes('codePath') && !options.codePath && !options.codeBuf && !options.code) {
+      schema.properties.codePath = {...requiredString, message:fileMessage};
+    }
+    
+    if (required.includes('configPath') && !options.configPath && !options.configStr && !options.config) {
+      schema.properties.configPath = {...requiredString, message:fileMessage};
+    }
+    
+    if (required.includes('filePath') && !options.filePath && !options.fileBuf && !options.file) {
+      schema.properties.filePath = {type: "string", message:fileMessage};
+    }
+    
+    if (required.includes('jsonPath') && !options.jsonPath && !options.jsonStr && !options.json) {
+      schema.properties.jsonPath = {type: "string", message:fileMessage};
+    }
+    
+    if (required.includes('modulePath') && !options.modulePath && !options.moduleBuf && !options.module) {
+      schema.properties.modulePath = {...requiredString, message:fileMessage};
+    }
+  
+    try {
+      await prompt.start();
+      const result = await prompt.get(schema);
+      const emptyKeys = Object.keys(result).filter(value => result[value] === '');
+      emptyKeys.forEach(key => delete result[key]);
+      Object.assign(options, result);
+
+      if(options.clientId) options.client_id = options.clientId;
+      if(options.sitekey) options.site_name = options.sitekey;
+      if(options.configTag) options.config_tag = options.configTag;
+      if(options.vendorCode) options.vendor_code = options.vendorCode;
+      if(options.prereleaseCode) options.prerelease_code = options.prereleaseCode;
+      if(options.codeId) options.code_id = options.codeId;
+      if(options.moduleName) options.module_name = options.moduleName;
+      if(options.moduleMD5) options.module_md5 = options.moduleMD5;
+      if (options.codePath && !options.codeBuf && !options.code) {
+        options.codeBuf = await getZipBufferFromFolderPath(options.codePath.replace("~",home));
+      }
+      if (options.codeBuf && !options.code) {
+        options.code = options.codeBuf;
+      }
+      if (options.configPath && !options.configStr && !options.config) {
+        options.configStr = await getStringFromFilePath(options.configPath.replace("~",home));
+      }
+      if(options.configStr && !options.config) {
+        options.config = Buffer.from(options.configStr);
+      }
+      if (options.filePath && !options.fileBuf && !options.file) {
+        options.fileBuf = await getZipBufferFromFolderPath(options.filePath.replace("~",home));
+      }
+      if (options.fileBuf && !options.file) {
+        options.file = options.fileBuf;
+      }
+      if (options.jsonPath && !options.jsonStr && !options.json) {
+        options.jsonStr = await getStringFromFilePath(options.jsonPath.replace("~",home));
+      }
+      if (options.jsonStr && !options.json) {
+        options.json = Buffer.from(options.jsonStr);
+      }
+      if (options.modulePath && !options.moduleBuf && !options.module) {
+        options.moduleBuf = await getZipBufferFromFolderPath(options.filePath.replace("~",home));
+      }
+      if (options.moduleBuf && !options.module) {
+        options.module = options.moduleBuf;
+      }
+
+      if (required.includes('codePath') && !options.code) {
+        throw new Error("Missing code buffer, unable to create zip folder to send with request.");
+      }
+      if (required.includes('configPath') && !options.config) {
+        throw new Error("Missing config string, unable to create js file to send with request.");
+      }
+      if (required.includes('modulePath') && !options.module) {
+        throw new Error("Missing module buffer, unable to create zip folder to send with request.");
+      }
+
+      return options;
+    } catch (error) { return { error }; }
+  }
+}
+
+function logResults (endpoint, successFunction, result, wasCreated, productName) {
+  const message = result.message;
+  
+  //handle the files being returned
+  if (endpoint === 'default' || (!message && endpoint === 'config')) {
+    console.log(chalk.yellow('returned config:'), endpoint === 'default' ? message : result);
+    return;
+  }
+  
+  if (!message) {
+    const files = result.map(file => file.name);
+    console.log(chalk.yellow(`${files.length} zip file names:`), files);
+    return;
+  }
+  
+  //handle non-files
+  if (['code_invalid', 'code_latest'].includes(endpoint)) endpoint = 'code';
+  
+  if (typeof(message) != 'object') {
+    console.log(chalk.blue(message));
+  } else if (!Array.isArray(message)) {
+    successFunction(message, wasCreated, endpoint, productName);
+  } else if (Array.isArray(message) && message.length === 1) { //because get site likes to be special
+    successFunction(message[0], wasCreated, endpoint, productName);
+  } else {
+    console.log(chalk.yellow(`Complete ${endpoint} list (${chalk.magenta(message.length)} results):`));
+    message.forEach(value => {
+      console.log(chalk.grey("---------------------------------------------"));
+      successFunction(value, wasCreated, endpoint, productName);
+    });
+  }
 };
 
-// Tell the world
-module.exports = FCPClient;
+function fancyPrint (item, wasCreated, endpoint, productName) {
+  if (wasCreated && endpoint === 'product' && item.product !== productName) wasCreated = false;
+  
+  const requireds = {
+    client: 'id',
+    code: 'code_md5',
+    config: 'tag',
+    container: 'site_name',
+    default: 'unrealisticExpectations',
+    module: 'module_md5',
+    product: 'tag',
+    site: 'alias'
+  };
+  const capitalize = s => s && s[0] && s[0].toUpperCase() + s.slice(1);
+  
+  const title = capitalize(endpoint);
+  const required = requireds[endpoint];
+  
+  if (!required) {
+    console.log(
+      chalk.magenta(`   ${title} contents: `),
+      chalk.grey(JSON.stringify(item)),
+    );
+  } else {
+    const whatToPrint = {
+      client: chalk.grey(`[ID: ${chalk.yellow(item.id)}] `) + item.name,
+      code:
+        chalk.grey(`[code version: ${chalk.yellow(item.version)}] `) + 
+        (item.vendor_code ? `${chalk.grey('vendor code: ') + item.vendor_code} ` : ""),
+      config: 
+        chalk.grey(`[container config: ${chalk.yellow(item.tag)}] `) +
+        (item.code_version ? `${chalk.grey('code version: ') + item.code_version} ` : "") +
+        (item.vendor_code ? `${chalk.grey('vendor code: ') + item.vendor_code} ` : ""),
+      container:
+        chalk.grey(`[site: ${chalk.yellow(item.site_name)}] `) +
+        chalk.grey(`[container: ${chalk.yellow(item.name)}] `) +
+        (item.config_tag ? `${chalk.grey('config tag: ') + item.config_tag} ` : ""),
+      module:
+        chalk.grey(`[name: ${chalk.yellow(item.module_name)}] `) +
+        chalk.grey(`[version: ${chalk.yellow(item.version)}] `) +
+        (item.vendor_code ? `${chalk.grey('vendor code: ') + item.vendor_code} ` : ""),
+      product:
+        chalk.grey(`[product: ${chalk.yellow(item.product)}] `) +
+        chalk.grey(`[product config: ${chalk.yellow(item.tag)}] `) +
+        (item.config_tag ? `${chalk.grey('code version: ') + item.code_version} ` : "") +
+        (item.vendor_code ? `${chalk.grey('vendor code: ') + item.vendor_code} ` : ""),
+      site:
+        chalk.grey(`[CID: ${chalk.yellow(item.client_id)}] `) + 
+        chalk.grey(`[sitekey: ${chalk.yellow(item.name)}] `) + 
+        (item.alias ? `${chalk.grey('alias: ') + item.alias} ` : ""),
+    };
+    
+    console.log(
+      chalk.magenta(`  ${title}: `),
+      whatToPrint[endpoint],
+      item.deleted && item.deleted != 0 ? chalk.red("DELETED") : "",
+      chalk.magenta(!!wasCreated ? "was created." : ""),
+    );
+    
+    if (item.metadata) console.log(chalk.magenta("  metadata: "), item.metadata);
+  }
+};
+

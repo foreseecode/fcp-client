@@ -1,0 +1,18 @@
+name: develop
+
+on:
+  pull_request:
+    branches: [ develop ]
+    types: [assigned, opened, synchronize, reopened]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install modules
+      run: npm i
+# Commented out because currently no tests to run      
+#    - name: Run tests
+#      run: npm test 
