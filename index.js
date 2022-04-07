@@ -138,7 +138,7 @@ module.exports = class FCPClient {
       "qfed": "http://qfed-xm-dkrsvc1.lab.local:3001",
       "ttec": "https://eex-cert-brain.ttecfed.com:3010",
       "devramp": "https://mpathy-fcp.fedramp.foresee.com",
-      "emea-qa": "fcp-emea-qa.foresee.com"
+      "emea-qa": "https://fcp-emea-qa.foresee.com"
     };
   }
 
@@ -153,7 +153,7 @@ module.exports = class FCPClient {
       "qfed": "https://qfed-xm-sdkweb1.lab.local",
       "ttec": "https://eex-cert-gateway.ttecfed.com",
       "devramp": "https://mpathy-fcs.fedramp.foresee.com",
-      "emea-qa": "fcs-emea-qa.foresee.com"
+      "emea-qa": "https://fcs-emea-qa.foresee.com"
     };
   }
 
