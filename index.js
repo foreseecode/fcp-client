@@ -101,16 +101,21 @@ module.exports = class FCPClient {
   constructor (options = {}) {
     const { username, password, environment } = options;
     const hostname = environment.fcpUrl;
+
+    const noLoginNeededEnvs = ['ttec']
+    const shouldSkipLogin = noLoginNeededEnvs.includes(environment)
     
-    if (!username) {
-      throw new Error("Missing username");
-    }
-    if (username.indexOf('@') === -1) {
-      throw new Error("Username should be an email address");
-    }
-    if (!password) {
-      throw new Error("Missing password");
-    }
+    if (!shouldSkipLogin) {
+      if (!username) {
+        throw new Error("Missing username");
+      }
+      if (username.indexOf('@') === -1) {
+        throw new Error("Username should be an email address");
+      }
+      if (!password) {
+        throw new Error("Missing password");
+      }
+    } 
     if (!hostname) {
       throw new Error("Missing hostname");
     }
@@ -262,7 +267,7 @@ module.exports = class FCPClient {
    * Ask the user to set their environment
    */
   static async setFCPEnvironment () {
-    console.log('valid environments: prod, stg, qa, qa2, dev, local')
+    console.log('valid environments: prod, stg, qa, qa2, dev, ttec, local')
 
     const schema = { properties: {} };
     
@@ -277,7 +282,7 @@ module.exports = class FCPClient {
     const validEnvironments = ['prod', 'stg', 'qa', 'qa2', 'dev', 'local']
 
     if (!environment || !validEnvironments.includes(environment)) {
-      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev, local)')
+      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev, ttec, local)')
     }
 
     let envObj = {}
@@ -300,7 +305,7 @@ module.exports = class FCPClient {
    * Ask the user for environment
    * @param {Object} options
    * This could include:
-   *  - {String} environment: dev, qa, qa2, stg, prod, local
+   *  - {String} environment: dev, qa, qa2, stg, prod, ttec, local
    */
   static async getFCPEnvironment (options = {}) {
     let env;
@@ -315,13 +320,13 @@ module.exports = class FCPClient {
     options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     
     if (!options.env) {
-      console.log('Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)');
+      console.log('Environment options are: dev, qa, qa2, stg, prod, ttec or local (localhost:3001)');
       
       schema.properties.env = {
         required: true,
         // pattern: /^\w+$/,                  // Regular expression that input must be valid against.
         type: 'string',
-        message: 'Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)'
+        message: 'Environment options are: dev, qa, qa2, stg, prod, ttec or local (localhost:3001)'
       };
 
       await prompt.start();
