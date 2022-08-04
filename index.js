@@ -101,16 +101,21 @@ module.exports = class FCPClient {
   constructor (options = {}) {
     const { username, password, environment } = options;
     const hostname = environment.fcpUrl;
+
+    const noLoginNeededEnvs = ['ttec']
+    const shouldSkipLogin = noLoginNeededEnvs.includes(environment)
     
-    if (!username) {
-      throw new Error("Missing username");
-    }
-    if (username.indexOf('@') === -1) {
-      throw new Error("Username should be an email address");
-    }
-    if (!password) {
-      throw new Error("Missing password");
-    }
+    if (!shouldSkipLogin) {
+      if (!username) {
+        throw new Error("Missing username");
+      }
+      if (username.indexOf('@') === -1) {
+        throw new Error("Username should be an email address");
+      }
+      if (!password) {
+        throw new Error("Missing password");
+      }
+    } 
     if (!hostname) {
       throw new Error("Missing hostname");
     }
@@ -136,7 +141,7 @@ module.exports = class FCPClient {
       "stg": "https://stg-fcp.foresee.com",
       "prod": "https://fcp.foresee.com",
       "qfed": "http://qfed-xm-dkrsvc1.lab.local:3001",
-      "ttec": "https://eex-cert-brain.ttecfed.com:3010",
+      "ttec": "https://eex.fr011.ttecfed.com:3010",
       "devramp": "https://mpathy-fcp.fedramp.foresee.com",
       "emea-qa": "https://fcp-emea-qa.foresee.com",
       "emea-stg": "https://fcp-emea-stg.xmverint.com",
@@ -153,7 +158,7 @@ module.exports = class FCPClient {
       "stg": "https://stg-gateway.foresee.com",
       "prod": "https://gateway.foresee.com",
       "qfed": "https://qfed-xm-sdkweb1.lab.local",
-      "ttec": "https://eex-cert-gateway.ttecfed.com",
+      "ttec": "https://eex-gateway.fr011.ttecfed.com",
       "devramp": "https://mpathy-fcs.fedramp.foresee.com",
       "emea-qa": "https://fcs-emea-qa.foresee.com",
       "emea-stg": "https://fcs-emea-stg.xmverint.com",
@@ -262,7 +267,7 @@ module.exports = class FCPClient {
    * Ask the user to set their environment
    */
   static async setFCPEnvironment () {
-    console.log('valid environments: prod, stg, qa, qa2, dev, local')
+    console.log('valid environments: prod, stg, qa, qa2, dev, ttec, local')
 
     const schema = { properties: {} };
     
@@ -277,7 +282,7 @@ module.exports = class FCPClient {
     const validEnvironments = ['prod', 'stg', 'qa', 'qa2', 'dev', 'local']
 
     if (!environment || !validEnvironments.includes(environment)) {
-      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev, local)')
+      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev, ttec, local)')
     }
 
     let envObj = {}
@@ -300,7 +305,7 @@ module.exports = class FCPClient {
    * Ask the user for environment
    * @param {Object} options
    * This could include:
-   *  - {String} environment: dev, qa, qa2, stg, prod, local
+   *  - {String} environment: dev, qa, qa2, stg, prod, ttec, local
    */
   static async getFCPEnvironment (options = {}) {
     let env;
@@ -315,13 +320,13 @@ module.exports = class FCPClient {
     options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     
     if (!options.env) {
-      console.log('Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)');
+      console.log('Environment options are: dev, qa, qa2, stg, prod, ttec or local (localhost:3001)');
       
       schema.properties.env = {
         required: true,
         // pattern: /^\w+$/,                  // Regular expression that input must be valid against.
         type: 'string',
-        message: 'Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)'
+        message: 'Environment options are: dev, qa, qa2, stg, prod, ttec or local (localhost:3001)'
       };
 
       await prompt.start();
