@@ -377,16 +377,21 @@ module.exports = class FCPClient {
   }
 
   async callFCP (action, endpoint, options = {}) {
-    const basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
-    const testUrl = `${this.hostname}/user/groups`;
-    const testResult = await fetch(testUrl, { method: 'GET', headers: basicAuth });
-    const testResultMessage = testResult && testResult.statusCode === 200 && testResult.message;
-    const fcpGroups = Array.isArray(testResultMessage.groups) &&
-      testResultMessage.groups.filter(group => group.substr(0,4) === "fcp_");
-    if(!fcpGroups) {
-      throw new Error(JSON.stringify(testResult));
+    let basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
+
+    if (options.environment && options.environment === 'ttec') {
+      basicAuth = {}
+    } else {
+      const testUrl = `${this.hostname}/user/groups`;
+      const testResult = await fetch(testUrl, { method: 'GET', headers: basicAuth });
+      const testResultMessage = testResult && testResult.statusCode === 200 && testResult.message;
+      const fcpGroups = Array.isArray(testResultMessage.groups) &&
+        testResultMessage.groups.filter(group => group.substr(0,4) === "fcp_");
+      if(!fcpGroups) {
+        throw new Error(JSON.stringify(testResult));
+      }
     }
-    
+
     // TODO: add a better error message so they know what came in wrong
     if(!fcpRef[action] || !fcpRef[action][endpoint]) throw new Error(`Unknown choice combination: ${action} ${endpoint}`);
     const { type, urlFrag, required, multipart } = fcpRef[action][endpoint];
