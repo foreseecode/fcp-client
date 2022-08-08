@@ -102,8 +102,8 @@ module.exports = class FCPClient {
     const { username, password, environment } = options;
     const hostname = environment.fcpUrl;
 
-    const noLoginNeededEnvs = ['ttec']
-    const shouldSkipLogin = noLoginNeededEnvs.includes(environment)
+    const noLoginNeededEnvs = ['ttec', 'ttec-cert', 'qfed'];
+    const shouldSkipLogin = noLoginNeededEnvs.includes(environment);
     
     if (!shouldSkipLogin) {
       if (!username) {
@@ -129,7 +129,7 @@ module.exports = class FCPClient {
   }
 
   static get environmentShort () { 
-    return ["dev", "qa", "qa2", "stg", "prod", "local", "devramp", "qfed", "ttec", "emea-qa", "emea-stg", "emea-prod"]; 
+    return ["dev", "qa", "qa2", "stg", "prod", "local", "devramp", "qfed", "ttec", "ttec-cert", "emea-qa", "emea-stg", "emea-prod"]; 
   }
 
   static get fcpUrls () {
@@ -141,7 +141,8 @@ module.exports = class FCPClient {
       "stg": "https://stg-fcp.foresee.com",
       "prod": "https://fcp.foresee.com",
       "qfed": "http://qfed-xm-dkrsvc1.lab.local:3001",
-      "ttec": "https://eex.fr011.ttecfed.com:3010",
+      "ttec": "https://eex-docker.fr011.ttecfed.com:3010",
+      "ttec-cert": "https://eex-cert-docker.fr011.ttecfed.com:3010",
       "devramp": "https://mpathy-fcp.fedramp.foresee.com",
       "emea-qa": "https://fcp-emea-qa.foresee.com",
       "emea-stg": "https://fcp-emea-stg.xmverint.com",
@@ -159,6 +160,7 @@ module.exports = class FCPClient {
       "prod": "https://gateway.foresee.com",
       "qfed": "https://qfed-xm-sdkweb1.lab.local",
       "ttec": "https://eex-gateway.fr011.ttecfed.com",
+      "ttec-cert": "https://eex-cert-gateway.fr011.ttecfed.com",
       "devramp": "https://mpathy-fcs.fedramp.foresee.com",
       "emea-qa": "https://fcs-emea-qa.foresee.com",
       "emea-stg": "https://fcs-emea-stg.xmverint.com",
