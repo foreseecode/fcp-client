@@ -381,7 +381,9 @@ module.exports = class FCPClient {
   async callFCP (action, endpoint, options = {}) {
     let basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
 
-    if (options.environment && options.environment === 'ttec') {
+    const noLoginNeededEnvs = ['ttec', 'ttec-cert', 'qfed'];
+    const shouldSkipLogin = options.environment ? noLoginNeededEnvs.includes(options.environment) : false;
+    if (shouldSkipLogin) {
       basicAuth = {}
     } else {
       const testUrl = `${this.hostname}/user/groups`;
