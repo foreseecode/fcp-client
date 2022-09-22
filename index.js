@@ -3,11 +3,11 @@ const formdata = require('form-data');
 const fs = require('fs');
 const prompt = require('prompt-async');
 const nodefetch = require('node-fetch');
-const jsZip = require('node-zip');
 const { URLSearchParams } = require('url');
 const { promisify } = require('util');
 const zipdir = require('zip-dir');
 const fcpRef = require('./endpointRequirements');
+const AdmZip = require("adm-zip");
 
 //does this work?
 const home = process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'];
@@ -456,23 +456,24 @@ module.exports = class FCPClient {
       if (!options.silent) logResults(endpoint.toLowerCase(), fancyPrint, result, ['create','set'].includes(action), options.product);
       
       if (type === "GET" && (url.includes('/code/files/') || url.includes('/modules/files/'))) {
-        const zip = new jsZip(Buffer.from(result), {createFolders: true, checkCRC32: true});
+        const zip = jsZip(Buffer.from(result));
         const files = Object.values(zip.files).map(function(file) {
           return {
             folder: file.dir,
             name: file.name,
-            buffer: file.dir ? null : file.asNodeBuffer(),
+            buffer: file.buffer
           };
         });
+
         return files;
       }
       
       return result;
       
     } catch (err) {
+      console.error('error in fcp-client callFCP:', err);
       return err;
     }
-
   }
 
   /**
@@ -793,3 +794,17 @@ function fancyPrint (item, wasCreated, endpoint, productName) {
   }
 };
 
+const jsZip = (buffer) => {
+  const zip = new AdmZip(buffer);
+  const files = {};
+
+  zip.getEntries().forEach(function(entry) {
+    files[entry.entryName] = {
+      dir: entry.isDirectory,
+      name: entry.entryName,
+      buffer: entry.isDirectory ? null : entry.getData()
+    };
+  });
+
+  return { files };
+}
