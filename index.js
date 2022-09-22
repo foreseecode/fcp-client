@@ -3,11 +3,11 @@ const formdata = require('form-data');
 const fs = require('fs');
 const prompt = require('prompt-async');
 const nodefetch = require('node-fetch');
-const jsZip = require('node-zip');
 const { URLSearchParams } = require('url');
 const { promisify } = require('util');
 const zipdir = require('zip-dir');
 const fcpRef = require('./endpointRequirements');
+const AdmZip = require("adm-zip");
 
 //does this work?
 const home = process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'];
@@ -101,16 +101,21 @@ module.exports = class FCPClient {
   constructor (options = {}) {
     const { username, password, environment } = options;
     const hostname = environment.fcpUrl;
+
+    const noLoginNeededEnvs = ['ttec', 'ttec-cert', 'qfed'];
+    const shouldSkipLogin = noLoginNeededEnvs.includes(environment);
     
-    if (!username) {
-      throw new Error("Missing username");
-    }
-    if (username.indexOf('@') === -1) {
-      throw new Error("Username should be an email address");
-    }
-    if (!password) {
-      throw new Error("Missing password");
-    }
+    if (!shouldSkipLogin) {
+      if (!username) {
+        throw new Error("Missing username");
+      }
+      if (username.indexOf('@') === -1) {
+        throw new Error("Username should be an email address");
+      }
+      if (!password) {
+        throw new Error("Missing password");
+      }
+    } 
     if (!hostname) {
       throw new Error("Missing hostname");
     }
@@ -124,7 +129,7 @@ module.exports = class FCPClient {
   }
 
   static get environmentShort () { 
-    return ["dev", "qa", "qa2", "stg", "prod", "local", "devramp", "qfed", "ttec", "emea-qa", "emea-stg", "emea-prod"]; 
+    return ["dev", "qa", "qa2", "stg", "prod", "local", "devramp", "qfed", "ttec", "ttec-cert", "emea-qa", "emea-stg", "emea-prod"]; 
   }
 
   static get fcpUrls () {
@@ -136,7 +141,8 @@ module.exports = class FCPClient {
       "stg": "https://stg-fcp.foresee.com",
       "prod": "https://fcp.foresee.com",
       "qfed": "http://qfed-xm-dkrsvc1.lab.local:3001",
-      "ttec": "https://eex-cert-brain.ttecfed.com:3010",
+      "ttec": "https://eex-docker.fr011.ttecfed.com:3010",
+      "ttec-cert": "https://eex-cert-docker.fr011.ttecfed.com:3010",
       "devramp": "https://mpathy-fcp.fedramp.foresee.com",
       "emea-qa": "https://fcp-emea-qa.foresee.com",
       "emea-stg": "https://fcp-emea-stg.xmverint.com",
@@ -153,7 +159,8 @@ module.exports = class FCPClient {
       "stg": "https://stg-gateway.foresee.com",
       "prod": "https://gateway.foresee.com",
       "qfed": "https://qfed-xm-sdkweb1.lab.local",
-      "ttec": "https://eex-cert-gateway.ttecfed.com",
+      "ttec": "https://eex-gateway.fr011.ttecfed.com",
+      "ttec-cert": "https://eex-cert-gateway.fr011.ttecfed.com",
       "devramp": "https://mpathy-fcs.fedramp.foresee.com",
       "emea-qa": "https://fcs-emea-qa.foresee.com",
       "emea-stg": "https://fcs-emea-stg.xmverint.com",
@@ -262,7 +269,7 @@ module.exports = class FCPClient {
    * Ask the user to set their environment
    */
   static async setFCPEnvironment () {
-    console.log('valid environments: prod, stg, qa, qa2, dev, local')
+    console.log('valid environments: prod, stg, qa, qa2, dev, ttec, local')
 
     const schema = { properties: {} };
     
@@ -277,7 +284,7 @@ module.exports = class FCPClient {
     const validEnvironments = ['prod', 'stg', 'qa', 'qa2', 'dev', 'local']
 
     if (!environment || !validEnvironments.includes(environment)) {
-      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev, local)')
+      throw new Error('Please provide a valid environment. (prod, stg, qa, qa2, dev, ttec, local)')
     }
 
     let envObj = {}
@@ -300,7 +307,7 @@ module.exports = class FCPClient {
    * Ask the user for environment
    * @param {Object} options
    * This could include:
-   *  - {String} environment: dev, qa, qa2, stg, prod, local
+   *  - {String} environment: dev, qa, qa2, stg, prod, ttec, local
    */
   static async getFCPEnvironment (options = {}) {
     let env;
@@ -315,13 +322,13 @@ module.exports = class FCPClient {
     options.env = options.env || env.FCP_ENVIRONMENT || process.env.FCP_ENVIRONMENT;
     
     if (!options.env) {
-      console.log('Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)');
+      console.log('Environment options are: dev, qa, qa2, stg, prod, ttec or local (localhost:3001)');
       
       schema.properties.env = {
         required: true,
         // pattern: /^\w+$/,                  // Regular expression that input must be valid against.
         type: 'string',
-        message: 'Environment options are: dev, qa, qa2, stg, prod or local (localhost:3001)'
+        message: 'Environment options are: dev, qa, qa2, stg, prod, ttec or local (localhost:3001)'
       };
 
       await prompt.start();
@@ -372,16 +379,23 @@ module.exports = class FCPClient {
   }
 
   async callFCP (action, endpoint, options = {}) {
-    const basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
-    const testUrl = `${this.hostname}/user/groups`;
-    const testResult = await fetch(testUrl, { method: 'GET', headers: basicAuth });
-    const testResultMessage = testResult && testResult.statusCode === 200 && testResult.message;
-    const fcpGroups = Array.isArray(testResultMessage.groups) &&
-      testResultMessage.groups.filter(group => group.substr(0,4) === "fcp_");
-    if(!fcpGroups) {
-      throw new Error(JSON.stringify(testResult));
+    let basicAuth = { "Authorization": `Basic ${(Buffer.from(`${this.username}:${this.password}`)).toString('base64')}` };
+
+    const noLoginNeededEnvs = ['ttec', 'ttec-cert', 'qfed'];
+    const shouldSkipLogin = options.environment ? noLoginNeededEnvs.includes(options.environment) : false;
+    if (shouldSkipLogin) {
+      basicAuth = {}
+    } else {
+      const testUrl = `${this.hostname}/user/groups`;
+      const testResult = await fetch(testUrl, { method: 'GET', headers: basicAuth });
+      const testResultMessage = testResult && testResult.statusCode === 200 && testResult.message;
+      const fcpGroups = Array.isArray(testResultMessage.groups) &&
+        testResultMessage.groups.filter(group => group.substr(0,4) === "fcp_");
+      if(!fcpGroups) {
+        throw new Error(JSON.stringify(testResult));
+      }
     }
-    
+
     // TODO: add a better error message so they know what came in wrong
     if(!fcpRef[action] || !fcpRef[action][endpoint]) throw new Error(`Unknown choice combination: ${action} ${endpoint}`);
     const { type, urlFrag, required, multipart } = fcpRef[action][endpoint];
@@ -442,23 +456,24 @@ module.exports = class FCPClient {
       if (!options.silent) logResults(endpoint.toLowerCase(), fancyPrint, result, ['create','set'].includes(action), options.product);
       
       if (type === "GET" && (url.includes('/code/files/') || url.includes('/modules/files/'))) {
-        const zip = new jsZip(Buffer.from(result), {createFolders: true, checkCRC32: true});
+        const zip = jsZip(Buffer.from(result));
         const files = Object.values(zip.files).map(function(file) {
           return {
             folder: file.dir,
             name: file.name,
-            buffer: file.dir ? null : file.asNodeBuffer(),
+            buffer: file.buffer
           };
         });
+
         return files;
       }
       
       return result;
       
     } catch (err) {
+      console.error('error in fcp-client callFCP:', err);
       return err;
     }
-
   }
 
   /**
@@ -779,3 +794,17 @@ function fancyPrint (item, wasCreated, endpoint, productName) {
   }
 };
 
+const jsZip = (buffer) => {
+  const zip = new AdmZip(buffer);
+  const files = {};
+
+  zip.getEntries().forEach(function(entry) {
+    files[entry.entryName] = {
+      dir: entry.isDirectory,
+      name: entry.entryName,
+      buffer: entry.isDirectory ? null : entry.getData()
+    };
+  });
+
+  return { files };
+}
