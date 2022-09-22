@@ -1,6 +1,6 @@
 {
   "name": "fcp-client",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Node interface for FCP API",
   "main": "index.js",
   "scripts": {
